@@ -35,12 +35,8 @@ It has been updated for PAYDAY 3's newer Unreal Engine version and is intended t
 PDML is designed to support:
 
 * Logic mods
-* Gameplay mods
-* Custom HUDs
-* HUD frameworks
 * Custom heists
 * Mod settings
-* Shared mod APIs
 * Runtime mod initialization
 
 Rather than every mod implementing its own loading and initialization system, PDML provides a common runtime layer that mods can build on top of.
@@ -50,21 +46,6 @@ Rather than every mod implementing its own loading and initialization system, PD
 Logic mods can contain their own Blueprint assets, systems, widgets, data assets, and supporting content rather than simply replacing an existing game asset.
 
 This allows mods to introduce genuinely new functionality without requiring every feature to be implemented through asset replacement.
-
-### HUD Mods
-
-PDML provides a foundation for HUD modifications and custom UI systems.
-
-This can be used for:
-
-* Complete HUD replacements
-* HUD extensions
-* Additional HUD widgets
-* Shared HUD frameworks
-* Mod-specific interfaces
-* Runtime UI initialization
-
-> **Work in progress:** PD3-Modkit is actively being developed and some systems, APIs, templates, and workflows may change.
 
 ### Custom Heists
 

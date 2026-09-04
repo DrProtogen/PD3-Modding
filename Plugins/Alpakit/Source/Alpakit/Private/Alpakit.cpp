@@ -14,6 +14,7 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/AssetManager.h"
 #include "Engine/AssetManagerSettings.h"
+#include "Engine/Engine.h"
 #include "Engine/PrimaryAssetLabel.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
@@ -297,9 +298,33 @@ void FAlpakitModule::SaveAndRefreshAssetManagerSettings()
     }
 
 #if WITH_EDITOR
-    // Refresh the editor's Primary Asset map immediately so Asset Audit/chunk
-    // assignments update without requiring a manual Project Settings edit.
-    UAssetManager::Get().ReinitializeFromConfig();
+    /*
+     * Alpakit can reach this function from StartupModule(), before GEngine and
+     * UAssetManager have finished initializing. Calling ReinitializeFromConfig()
+     * that early crashes inside Engine.
+     *
+     * The config/CDO has already been updated above, so during early startup the
+     * normal Asset Manager initialization will consume the new settings. For
+     * mods mounted later in an already-running editor, refresh immediately.
+     */
+    if (GEngine != nullptr && UAssetManager::IsInitialized())
+    {
+        UAssetManager::Get().ReinitializeFromConfig();
+
+        UE_LOG(
+            LogAlpakit,
+            Verbose,
+            TEXT("Asset Manager already initialized; refreshed Primary Asset configuration.")
+        );
+    }
+    else
+    {
+        UE_LOG(
+            LogAlpakit,
+            Display,
+            TEXT("Asset Manager is not initialized yet; PAL configuration was saved and will be picked up during normal initialization.")
+        );
+    }
 #endif
 
     UE_LOG(LogAlpakit, Display,
