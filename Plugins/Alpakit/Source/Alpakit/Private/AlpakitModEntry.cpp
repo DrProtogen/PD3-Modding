@@ -11,6 +11,7 @@
 #include "IUATHelperModule.h"
 #include "Engine/PrimaryAssetLabel.h"
 #include "EditorAssetLibrary.h"
+#include "Modules/ModuleManager.h"
 
 #define LOCTEXT_NAMESPACE "AlpakitModListEntry"
 
@@ -355,6 +356,16 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
         AdditionalUATArguments.Append(TEXT("-LaunchGame "));
         AdditionalUATArguments.Append(GetArgumentForLaunchType(Settings->LaunchGameAfterPacking)).Append(TEXT(" "));
     }
+
+    /*
+     * Repair/ensure Asset Manager registration immediately before UAT starts.
+     * This also fixes already-created mods: /<ModName> is persisted into the
+     * PrimaryAssetLabel Directories list and the PAL is added to SpecificAssets.
+     */
+    FAlpakitModule& AlpakitModule =
+        FModuleManager::LoadModuleChecked<FAlpakitModule>(TEXT("Alpakit"));
+
+    AlpakitModule.EnsureAssetManagerRegistrationForPlugin(*Mod);
 
     // Only request PASS 2 when the PAL explicitly manages content outside
     // the plugin mount. Mods containing only plugin assets stay on the fast

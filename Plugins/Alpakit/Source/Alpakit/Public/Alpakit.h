@@ -12,6 +12,12 @@ public:
     virtual void ShutdownModule() override;
 
     TArray<TSharedRef<struct FModTemplateDescription>> GetModTemplates() const { return ModTemplates; }
+
+    /**
+     * Ensure this mod is present in the PrimaryAssetLabel scan configuration
+     * and persist it before a separate UAT cook starts.
+     */
+    void EnsureAssetManagerRegistrationForPlugin(IPlugin& Plugin);
     
     /** ID name for the mod creator tab */
     static const FName ModCreatorTabName;

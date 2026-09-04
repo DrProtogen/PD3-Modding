@@ -18,6 +18,7 @@
 #include "Engine/PrimaryAssetLabel.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
+#include "Async/Async.h"
 
 static const FName AlpakitTabName("Alpakit");
 
@@ -151,6 +152,12 @@ bool FAlpakitModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
         return false;
     }
 
+    // Only actual Mod plugins belong in automatic PAL scan directories.
+    if (Plugin.GetType() != EPluginType::Mod)
+    {
+        return false;
+    }
+
     UAssetManagerSettings* AssetManagerSettings =
         GetMutableDefault<UAssetManagerSettings>();
 
@@ -174,7 +181,7 @@ bool FAlpakitModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
     {
         UE_LOG(LogAlpakit, Error,
             TEXT("Asset Manager has no PrimaryAssetLabel entry in Primary Asset Types to Scan. "
-                 "Create that entry once; Alpakit will manage its Specific Assets automatically."));
+                 "Create that entry once; Alpakit will manage Directories and Specific Assets automatically."));
         return false;
     }
 
@@ -183,12 +190,48 @@ bool FAlpakitModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
 
     if (PluginMountPath.IsEmpty())
     {
+        UE_LOG(LogAlpakit, Warning,
+            TEXT("Plugin %s has no mounted asset path; PAL registration skipped."),
+            *Plugin.GetName());
         return false;
     }
 
+    const FPrimaryAssetTypeInfo& CurrentTypeInfo = *PrimaryAssetLabelType;
+    TArray<FDirectoryPath> Directories = CurrentTypeInfo.GetDirectories();
+    TArray<FSoftObjectPath> SpecificAssets = CurrentTypeInfo.GetSpecificAssets();
+
+    bool bChanged = false;
+
+    // Make /<ModName> visible in Project Settings -> Asset Manager -> Directories.
+    const bool bDirectoryAlreadyRegistered =
+        Directories.ContainsByPredicate(
+            [&PluginMountPath](const FDirectoryPath& ExistingDirectory)
+            {
+                return ExistingDirectory.Path.Equals(
+                    PluginMountPath,
+                    ESearchCase::IgnoreCase);
+            });
+
+    if (!bDirectoryAlreadyRegistered)
+    {
+        FDirectoryPath NewDirectory;
+        NewDirectory.Path = PluginMountPath;
+        Directories.Add(NewDirectory);
+        bChanged = true;
+
+        UE_LOG(LogAlpakit, Display,
+            TEXT("Asset Manager: registered mod directory for PrimaryAssetLabel scan: %s"),
+            *PluginMountPath);
+    }
+
+    // Force discovery of PALs under the mod mount when the mount is usable.
     FAssetRegistryModule& AssetRegistryModule =
         FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
     IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+    TArray<FString> PathsToScan;
+    PathsToScan.Add(PluginMountPath);
+    AssetRegistry.ScanPathsSynchronous(PathsToScan, true);
 
     FARFilter Filter;
     Filter.PackagePaths.Add(FName(*PluginMountPath));
@@ -198,14 +241,6 @@ bool FAlpakitModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
 
     TArray<FAssetData> PrimaryAssetLabels;
     AssetRegistry.GetAssets(Filter, PrimaryAssetLabels);
-
-    // FPrimaryAssetTypeInfo keeps Directories/SpecificAssets protected in UE5.5.
-    // Work on config copies and rebuild the type info if anything changes.
-    const FPrimaryAssetTypeInfo& CurrentTypeInfo = *PrimaryAssetLabelType;
-    TArray<FDirectoryPath> Directories = CurrentTypeInfo.GetDirectories();
-    TArray<FSoftObjectPath> SpecificAssets = CurrentTypeInfo.GetSpecificAssets();
-
-    bool bChanged = false;
 
     for (const FAssetData& AssetData : PrimaryAssetLabels)
     {
@@ -246,9 +281,6 @@ bool FAlpakitModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
         *PrimaryAssetLabelType = MoveTemp(UpdatedTypeInfo);
     }
 
-    // Alpakit's packaging convention expects PAL_<PluginName> at the root.
-    // The registry query above supports PALs anywhere in the mod, but emit a
-    // useful message if the conventional PAL was not found.
     const FString ConventionalPALPackage = FString::Printf(
         TEXT("%s/PAL_%s"),
         *PluginMountPath,
@@ -265,7 +297,8 @@ bool FAlpakitModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
     if (!bFoundConventionalPAL)
     {
         UE_LOG(LogAlpakit, Verbose,
-            TEXT("No conventional PAL found for %s at %s (other PALs in the plugin are still registered)."),
+            TEXT("No conventional PAL found for %s at %s on this scan. "
+                 "The directory is still registered; newly-mounted mods get a deferred rescan."),
             *Plugin.GetName(),
             *ConventionalPALPackage);
     }
@@ -332,13 +365,32 @@ void FAlpakitModule::SaveAndRefreshAssetManagerSettings()
         *DefaultGameIni);
 }
 
-void FAlpakitModule::RegisterModTemplates() {
+void FAlpakitModule::EnsureAssetManagerRegistrationForPlugin(IPlugin& Plugin)
+{
+    if (RegisterPrimaryAssetLabelsFromPlugin(Plugin))
+    {
+        SaveAndRefreshAssetManagerSettings();
+    }
+}
+
+void FAlpakitModule::RegisterModTemplates()
+{
     bool bAssetManagerChanged = false;
 
-    TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPlugins();
-    for (TSharedRef<IPlugin> Plugin : EnabledPlugins) {
-        if (IsPluginAMod(Plugin.Get())) {
-            bAssetManagerChanged |= RegisterPrimaryAssetLabelsFromPlugin(Plugin.Get());
+    TArray<TSharedRef<IPlugin>> EnabledPlugins =
+        IPluginManager::Get().GetEnabledPlugins();
+
+    for (TSharedRef<IPlugin> Plugin : EnabledPlugins)
+    {
+        if (Plugin->GetType() == EPluginType::Mod)
+        {
+            bAssetManagerChanged |=
+                RegisterPrimaryAssetLabelsFromPlugin(Plugin.Get());
+        }
+
+        // Preserve existing support for project plugins providing templates.
+        if (IsPluginAMod(Plugin.Get()))
+        {
             AddModTemplatesFromPlugin(Plugin.Get());
         }
     }
@@ -348,15 +400,47 @@ void FAlpakitModule::RegisterModTemplates() {
         SaveAndRefreshAssetManagerSettings();
     }
 
-    IPluginManager::Get().OnNewPluginMounted().AddLambda([this](IPlugin& Plugin){
-        if (IsPluginAMod(Plugin)) {
-            if (RegisterPrimaryAssetLabelsFromPlugin(Plugin))
+    IPluginManager::Get().OnNewPluginMounted().AddLambda(
+        [this](IPlugin& Plugin)
+        {
+            const FString PluginName = Plugin.GetName();
+
+            if (Plugin.GetType() == EPluginType::Mod)
             {
-                SaveAndRefreshAssetManagerSettings();
+                // Adds /<ModName> immediately even if PAL discovery is one tick early.
+                EnsureAssetManagerRegistrationForPlugin(Plugin);
+
+                // In UE5.5 the mount notification is observed before the package
+                // mount is fully visible. Retry once after the callback returns.
+                AsyncTask(
+                    ENamedThreads::GameThread,
+                    [this, PluginName]()
+                    {
+                        TSharedPtr<IPlugin> MountedPlugin =
+                            IPluginManager::Get().FindPlugin(PluginName);
+
+                        if (!MountedPlugin.IsValid() ||
+                            MountedPlugin->GetType() != EPluginType::Mod)
+                        {
+                            return;
+                        }
+
+                        UE_LOG(
+                            LogAlpakit,
+                            Verbose,
+                            TEXT("Deferred Asset Manager PAL rescan for newly-mounted mod %s"),
+                            *PluginName);
+
+                        EnsureAssetManagerRegistrationForPlugin(
+                            *MountedPlugin);
+                    });
             }
-            AddModTemplatesFromPlugin(Plugin);
-        }
-    });
+
+            if (IsPluginAMod(Plugin))
+            {
+                AddModTemplatesFromPlugin(Plugin);
+            }
+        });
 }
 
 void FAlpakitModule::AddModTemplatesFromPlugin(IPlugin& Plugin) {
