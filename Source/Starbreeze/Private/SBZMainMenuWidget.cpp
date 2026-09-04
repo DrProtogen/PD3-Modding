@@ -1,0 +1,149 @@
+#include "SBZMainMenuWidget.h"
+#include "Templates/SubclassOf.h"
+
+USBZMainMenuWidget::USBZMainMenuWidget() {
+    this->Widget_LoadoutCustomization = NULL;
+    this->Widget_WeaponCustomization = NULL;
+    this->Widget_WeaponCustomizationTemp = NULL;
+    this->Widget_WeaponInventory = NULL;
+    this->Widget_ArmorCustomization = NULL;
+    this->Widget_ArmorModifiers = NULL;
+    this->Widget_ItemInventory = NULL;
+    this->Widget_SkillsSelection = NULL;
+    this->WBP_Skills2_Menu = NULL;
+    this->Widget_WeaponProgression = NULL;
+    this->Widget_MaskCustomization = NULL;
+    this->Widget_WeaponModifiers = NULL;
+    this->Widget_SuitCustomization = NULL;
+    this->Widget_SuitCosmeticCustomization = NULL;
+    this->Widget_BlackMarketInspect = NULL;
+    this->Widget_Cosmetic = NULL;
+    this->CanvasPanel_Widgets = NULL;
+    this->Widget_HeistInspect = NULL;
+    this->Widget_FullscreenVideo = NULL;
+    this->CosmeticItemButtonClass = NULL;
+    this->CrossplayPopupWidgetClass = NULL;
+    this->OnboardingPopupWidgetClass = NULL;
+    this->TutorialPopupWidgetClass = NULL;
+    this->PopUpBody = NULL;
+    this->LoadoutChangePopupWidgetClass = NULL;
+    this->LoadoutChangePopupHeaderText = FText::FromString(TEXT("WARNING"));
+    this->LoadoutChangePopupDescriptionText = FText::FromString(TEXT("Skill changes caused the following skills to unequip:\n"));
+    this->LoadoutChangePopupListText = FText::FromString(TEXT("{PreviousMessage}\n* {NewMessage}"));
+    this->VendorTypeToOpen = ESBZBlackMarketVendorType::None;
+}
+
+void USBZMainMenuWidget::ShowTutorialPopup() {
+}
+
+void USBZMainMenuWidget::ShowOnboardingPopup() {
+}
+
+
+void USBZMainMenuWidget::ShowLoadoutChangePopup() {
+}
+
+void USBZMainMenuWidget::SetVendorTypeToOpen(ESBZBlackMarketVendorType VendorType) {
+}
+
+void USBZMainMenuWidget::RequestRemoveBackgroundBlur() {
+}
+
+
+void USBZMainMenuWidget::OnTutorialPopUpClosed(FName ClosingActionName) {
+}
+
+void USBZMainMenuWidget::OnOnboardingPopUpInput(FName ActionInputName) {
+}
+
+void USBZMainMenuWidget::OnMainMenuInitializeComplete() {
+}
+
+void USBZMainMenuWidget::OnLoadoutChangePopupClosed(FName ClosingActionName) {
+}
+
+ESBZBlackMarketVendorType USBZMainMenuWidget::GetVendorTypeToOpen(bool bResetValue) {
+    return ESBZBlackMarketVendorType::Featured;
+}
+
+USBZMenuStackScreenWidget* USBZMainMenuWidget::GetOrCreateDynamicScreen(TSubclassOf<USBZMenuStackScreenWidget> MenuScreenClass) {
+    return NULL;
+}
+
+bool USBZMainMenuWidget::DisplayWeaponProgressionScreen(ESBZEquippableLoadoutSlot InEquippableSlot, int32 InWeaponSlotIndex) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplayWeaponModiferScreen(ESBZEquippableLoadoutSlot InEquippableSlot, int32 InWeaponSlotIndex, const USBZWeaponPartSlot* InWeaponPartSlot) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplayWeaponInventoryScreen(int32 LoadoutIndex, ESBZEquippableLoadoutSlot InEquippableSlot) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplaySuitCustomizationScreen(int32 InSuitSlotIndex) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplaySuitCosmeticCustomizationScreen(int32 InSuitSlotIndex, const USBZSuitPartConfig* InSuitPartConfig, const USBZCosmeticsPartSlot* InCosmeticPartSlot) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplaySkillsSelection(int32 InLoadoutIndex) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplayMaskGenericSlotScreen(const USBZCosmeticsPartSlot* InCosmeticPartSlot, bool HasDefaultBool, FText DefaultDisplayName) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplayMaskCustomizationScreen(int32 InMaskSlotIndex) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplayItemInventoryScreen(int32 InLoadoutIndex, ESBZItemLoadoutSlot InItemSlotType) {
+    return false;
+}
+
+void USBZMainMenuWidget::DisplayHeistInpectScreen(UPD3HeistDataAsset* InHeistData) {
+}
+
+void USBZMainMenuWidget::DisplayFullscreenVideoScreen(const FFilePath& FilePath) {
+}
+
+void USBZMainMenuWidget::DisplayDynamicScreen(TSubclassOf<USBZMenuStackScreenWidget> MenuScreenClass) {
+}
+
+void USBZMainMenuWidget::DisplayCosmeticScreen(ESBZMainMenuCosmeticType InType, ESBZEquippableLoadoutSlot InEquippableSlot, int32 InIndex) {
+}
+
+bool USBZMainMenuWidget::DisplayBlackmarketInspectScreen(const USBZInventoryBaseData* InspectData) {
+    return false;
+}
+
+bool USBZMainMenuWidget::DisplayArmorModiferScreen(int32 InArmorSlotIndex, int32 InArmorChunkIndex) {
+    return false;
+}
+
+bool USBZMainMenuWidget::CustomizeWeaponInSlotTemp(ESBZEquippableLoadoutSlot InEquippableSlot, int32 InWeaponSlotIndex) {
+    return false;
+}
+
+bool USBZMainMenuWidget::CustomizeWeaponInSlot(ESBZEquippableLoadoutSlot InEquippableSlot, int32 InWeaponSlotIndex) {
+    return false;
+}
+
+void USBZMainMenuWidget::CustomizeLoadout(int32 InLoadoutIndex) {
+}
+
+bool USBZMainMenuWidget::CustomizeArmorInSlot(int32 InLoadoutIndex) {
+    return false;
+}
+
+bool USBZMainMenuWidget::CanInspectInventoryItem(const USBZInventoryBaseData* InspectData) const {
+    return false;
+}
+
+
+

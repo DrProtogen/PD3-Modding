@@ -1,0 +1,7 @@
+#pragma once
+#include "CoreMinimal.h"
+#include "AccelByteModelsPaginatedBulkGetPlayerRecordSizeResponse.h"
+#include "DModelsPaginatedBulkGetPlayerRecordSizeResponseDelegate.generated.h"
+
+UDELEGATE(BlueprintCallable) DECLARE_DYNAMIC_DELEGATE_OneParam(FDModelsPaginatedBulkGetPlayerRecordSizeResponse, FAccelByteModelsPaginatedBulkGetPlayerRecordSizeResponse, Response);
+

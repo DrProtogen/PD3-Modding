@@ -1,0 +1,5 @@
+#include "AccelByteModelsV2PartySessionStorageReservedData.h"
+
+FAccelByteModelsV2PartySessionStorageReservedData::FAccelByteModelsV2PartySessionStorageReservedData() {
+}
+

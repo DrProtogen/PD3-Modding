@@ -1,0 +1,5 @@
+#include "AccelByteModelsInventoryConfigurationsPagingResponse.h"
+
+FAccelByteModelsInventoryConfigurationsPagingResponse::FAccelByteModelsInventoryConfigurationsPagingResponse() {
+}
+

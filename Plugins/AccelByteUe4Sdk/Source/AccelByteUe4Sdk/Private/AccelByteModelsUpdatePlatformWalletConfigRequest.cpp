@@ -1,0 +1,5 @@
+#include "AccelByteModelsUpdatePlatformWalletConfigRequest.h"
+
+FAccelByteModelsUpdatePlatformWalletConfigRequest::FAccelByteModelsUpdatePlatformWalletConfigRequest() {
+}
+

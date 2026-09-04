@@ -1,0 +1,8 @@
+#include "SBZOrderCreate.h"
+
+FSBZOrderCreate::FSBZOrderCreate() {
+    this->Quantity = 0;
+    this->Price = 0;
+    this->DiscountedPrice = 0;
+}
+

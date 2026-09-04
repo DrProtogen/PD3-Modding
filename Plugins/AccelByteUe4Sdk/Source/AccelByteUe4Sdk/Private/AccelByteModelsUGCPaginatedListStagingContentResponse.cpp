@@ -1,0 +1,5 @@
+#include "AccelByteModelsUGCPaginatedListStagingContentResponse.h"
+
+FAccelByteModelsUGCPaginatedListStagingContentResponse::FAccelByteModelsUGCPaginatedListStagingContentResponse() {
+}
+

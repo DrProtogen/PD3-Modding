@@ -1,0 +1,5 @@
+#include "AccelByteModelsChallengeEvaluateProgressOptionalParameter.h"
+
+FAccelByteModelsChallengeEvaluateProgressOptionalParameter::FAccelByteModelsChallengeEvaluateProgressOptionalParameter() {
+}
+

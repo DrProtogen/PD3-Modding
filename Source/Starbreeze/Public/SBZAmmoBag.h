@@ -1,0 +1,27 @@
+#pragma once
+#include "CoreMinimal.h"
+#include "SBZPlaceableCharges.h"
+#include "SBZAmmoBag.generated.h"
+
+UCLASS(Abstract, Blueprintable)
+class ASBZAmmoBag : public ASBZPlaceableCharges {
+    GENERATED_BODY()
+public:
+protected:
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
+    uint8 NumberOfMagazinesPerCharge;
+    
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
+    uint8 NumberOfGrenadesPerCharge;
+    
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Transient, meta=(AllowPrivateAccess=true))
+    float NumberOfMagazinesPerChargeScale;
+    
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, Transient, meta=(AllowPrivateAccess=true))
+    int32 NumberOfGrenadesPerChargeChange;
+    
+public:
+    ASBZAmmoBag(const FObjectInitializer& ObjectInitializer);
+
+};
+

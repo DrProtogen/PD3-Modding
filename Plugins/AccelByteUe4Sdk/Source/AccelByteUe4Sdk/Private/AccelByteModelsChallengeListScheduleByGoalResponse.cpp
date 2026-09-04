@@ -1,0 +1,5 @@
+#include "AccelByteModelsChallengeListScheduleByGoalResponse.h"
+
+FAccelByteModelsChallengeListScheduleByGoalResponse::FAccelByteModelsChallengeListScheduleByGoalResponse() {
+}
+

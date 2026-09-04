@@ -1,0 +1,5 @@
+#include "AccelByteModelsMoveUserItemsBetweenInventoriesRequest.h"
+
+FAccelByteModelsMoveUserItemsBetweenInventoriesRequest::FAccelByteModelsMoveUserItemsBetweenInventoriesRequest() {
+}
+

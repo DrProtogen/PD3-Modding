@@ -1,0 +1,5 @@
+#include "AccelByteModelsV2MatchmakingBackfillTicketExpireNotif.h"
+
+FAccelByteModelsV2MatchmakingBackfillTicketExpireNotif::FAccelByteModelsV2MatchmakingBackfillTicketExpireNotif() {
+}
+

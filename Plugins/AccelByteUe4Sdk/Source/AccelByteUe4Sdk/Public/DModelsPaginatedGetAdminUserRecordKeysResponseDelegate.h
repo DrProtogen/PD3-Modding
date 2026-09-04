@@ -1,0 +1,7 @@
+#pragma once
+#include "CoreMinimal.h"
+#include "AccelByteModelsPaginatedGetAdminUserRecordKeysResponse.h"
+#include "DModelsPaginatedGetAdminUserRecordKeysResponseDelegate.generated.h"
+
+UDELEGATE(BlueprintCallable) DECLARE_DYNAMIC_DELEGATE_OneParam(FDModelsPaginatedGetAdminUserRecordKeysResponse, FAccelByteModelsPaginatedGetAdminUserRecordKeysResponse, Response);
+

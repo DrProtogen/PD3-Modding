@@ -1,0 +1,20 @@
+{
+    "$schema": "./templates.schema.json",
+    "templates": [
+        {
+            "name": "Blank",
+            "description": "Create a blank mod plugin.",
+            "path": "blank"
+        },
+        {
+            "name": "Logic Mod",
+            "description": "Create a mod plugin that contains the basic assets needed for a blueprint logic mod.",
+            "path": "LogicMod"
+        },
+        {
+            "name": "HUD Widget",
+            "description": "Create a mod plugin that contains the basic assets needed for a a HUD Widget mod.",
+            "path": "HUDWidget"
+        }
+    ]
+}

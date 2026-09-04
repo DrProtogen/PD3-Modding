@@ -1,0 +1,5 @@
+#include "AccelByteModelsV2MatchmakingTicketProposedProposal.h"
+
+FAccelByteModelsV2MatchmakingTicketProposedProposal::FAccelByteModelsV2MatchmakingTicketProposedProposal() {
+}
+

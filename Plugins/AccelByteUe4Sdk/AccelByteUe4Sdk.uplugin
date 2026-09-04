@@ -1,0 +1,27 @@
+{
+	"FileVersion": 3,
+	"Version": 77,
+	"VersionName": "28.5.2",
+	"FriendlyName": "AccelByte Unreal Engine SDK",
+	"Description": "Official AccelByte SDK for Unreal Engine 4",
+	"Category": "Online Platform",
+	"CreatedBy": "Accelbyte Inc",
+	"CreatedByURL": "https://accelbyte.io/",
+	"DocsURL": "https://docs.accelbyte.io/gaming-services/getting-started/setup-game-sdk/unreal-sdk/",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "AccelByteUe4Sdk",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"PlatformAllowList": [
+				"Win64"
+			]
+		}
+	]
+}

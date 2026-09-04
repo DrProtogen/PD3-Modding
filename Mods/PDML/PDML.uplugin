@@ -1,0 +1,19 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0.0",
+	"FriendlyName": "PDML",
+	"Description": "A unified PAYDAY 3 mod loader and runtime for managing Blueprint mods, custom maps, HUD mods, and their assets.",
+	"Category": "Other",
+	"CreatedBy": "Nadz",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EnabledByDefault": true,
+	"SemVersion": "1.0.0"
+}

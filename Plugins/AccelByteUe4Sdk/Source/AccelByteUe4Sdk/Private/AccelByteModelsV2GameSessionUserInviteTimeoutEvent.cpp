@@ -1,0 +1,5 @@
+#include "AccelByteModelsV2GameSessionUserInviteTimeoutEvent.h"
+
+FAccelByteModelsV2GameSessionUserInviteTimeoutEvent::FAccelByteModelsV2GameSessionUserInviteTimeoutEvent() {
+}
+
