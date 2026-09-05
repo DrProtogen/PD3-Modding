@@ -4,6 +4,10 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
+using SystemJsonNode = System.Text.Json.Nodes.JsonNode;
+using SystemJsonObject = System.Text.Json.Nodes.JsonObject;
+using SystemJsonArray = System.Text.Json.Nodes.JsonArray;
 using AutomationTool;
 using EpicGames.Core;
 using UnrealBuildTool;
@@ -17,6 +21,18 @@ namespace Alpakit.Automation
 		public bool StartGame;
 		public string GameDirectory;
 		public string LaunchGameURL;
+	}
+
+	internal sealed class AlpakitPALPackagingManifest
+	{
+		public string SourceFile { get; set; } = "";
+		public string PluginName { get; set; } = "";
+		public string PAL { get; set; } = "";
+		public int ChunkId { get; set; } = -1;
+		public List<string> ExternalCookPackages { get; } =
+			new List<string>();
+		public List<string> ExpectedChunkPackages { get; } =
+			new List<string>();
 	}
 
 	/// <summary>
@@ -339,10 +355,623 @@ namespace Alpakit.Automation
 		// The resulting selected pakchunk is then copied INTO the plugin DLC
 		// shell created in PASS 1.
 		// --------------------------------------------------------------------
-		private static ProjectParams GetChunkParams(BuildCommand cmd)
+		private static List<string> ReadStringArray(
+			SystemJsonObject root,
+			string fieldName)
+		{
+			var result = new List<string>();
+
+			SystemJsonArray values =
+				root[fieldName] as SystemJsonArray;
+
+			if (values == null)
+			{
+				return result;
+			}
+
+			foreach (SystemJsonNode valueNode in values)
+			{
+				if (valueNode == null)
+				{
+					continue;
+				}
+
+				string value = "";
+
+				try
+				{
+					value = valueNode.GetValue<string>();
+				}
+				catch
+				{
+					value = "";
+				}
+
+				if (string.IsNullOrWhiteSpace(value))
+				{
+					continue;
+				}
+
+				value = value.Trim();
+
+				if (!result.Contains(
+						value,
+						StringComparer.OrdinalIgnoreCase))
+				{
+					result.Add(value);
+				}
+			}
+
+			return result;
+		}
+
+		private static AlpakitPALPackagingManifest
+			LoadPALPackagingManifest(
+				BuildCommand cmd,
+				string pluginName,
+				int chunkId)
+		{
+			string manifestFile =
+				cmd.ParseOptionalStringParam(
+					"AlpakitPALManifestFile");
+
+			if (string.IsNullOrWhiteSpace(manifestFile))
+			{
+				throw new AutomationException(
+					"Two-stage packaging requires -AlpakitPALManifestFile. "
+					+ "The editor did not provide the PAL's deterministic "
+					+ "package list."
+				);
+			}
+
+			if (!FileExists(manifestFile))
+			{
+				throw new AutomationException(
+					"PAL packaging manifest does not exist: {0}",
+					manifestFile
+				);
+			}
+
+			SystemJsonNode parsed;
+
+			try
+			{
+				parsed = SystemJsonNode.Parse(
+					File.ReadAllText(manifestFile));
+			}
+			catch (Exception exception)
+			{
+				throw new AutomationException(
+					"Could not parse PAL packaging manifest '{0}': {1}",
+					manifestFile,
+					exception.Message
+				);
+			}
+
+			SystemJsonObject root =
+				parsed as SystemJsonObject;
+
+			if (root == null)
+			{
+				throw new AutomationException(
+					"PAL packaging manifest '{0}' is not a JSON object.",
+					manifestFile
+				);
+			}
+
+			var result =
+				new AlpakitPALPackagingManifest
+				{
+					SourceFile = manifestFile,
+					PluginName =
+						root["PluginName"]?.GetValue<string>() ?? "",
+					PAL =
+						root["PAL"]?.GetValue<string>() ?? "",
+					ChunkId =
+						root["ChunkId"]?.GetValue<int>() ?? -1
+				};
+
+			result.ExternalCookPackages.AddRange(
+				ReadStringArray(
+					root,
+					"ExternalCookPackages"));
+
+			result.ExpectedChunkPackages.AddRange(
+				ReadStringArray(
+					root,
+					"ExpectedChunkPackages"));
+
+			if (!result.PluginName.Equals(
+					pluginName,
+					StringComparison.OrdinalIgnoreCase))
+			{
+				throw new AutomationException(
+					"PAL packaging manifest belongs to plugin '{0}', "
+					+ "but UAT is packaging '{1}'.",
+					result.PluginName,
+					pluginName
+				);
+			}
+
+			if (result.ChunkId != chunkId)
+			{
+				throw new AutomationException(
+					"PAL packaging manifest expects Chunk {0}, "
+					+ "but UAT was asked for Chunk {1}.",
+					result.ChunkId,
+					chunkId
+				);
+			}
+
+			if (result.ExternalCookPackages.Count == 0)
+			{
+				throw new AutomationException(
+					"PAL packaging manifest for '{0}' has no external "
+					+ "packages to force into PASS 2.",
+					pluginName
+				);
+			}
+
+			if (result.ExpectedChunkPackages.Count == 0)
+			{
+				throw new AutomationException(
+					"PAL packaging manifest for '{0}' has no expected "
+					+ "Chunk {1} packages.",
+					pluginName,
+					chunkId
+				);
+			}
+
+			return result;
+		}
+
+		private static string BuildExplicitExternalCookOptions(
+			AlpakitPALPackagingManifest manifest)
+		{
+			if (manifest == null ||
+			    manifest.ExternalCookPackages.Count == 0)
+			{
+				return "";
+			}
+
+			foreach (string packageName in
+				manifest.ExternalCookPackages)
+			{
+				if (string.IsNullOrWhiteSpace(packageName) ||
+				    !packageName.StartsWith(
+					    "/",
+					    StringComparison.Ordinal))
+				{
+					throw new AutomationException(
+						"Invalid external cook package in PAL manifest: '{0}'",
+						packageName ?? ""
+					);
+				}
+			}
+
+			/*
+			 * CookCommandlet's -Map argument is also a package seed list; it is
+			 * not restricted to UWorld/map assets. We intentionally do NOT use
+			 * -cooksinglepackage here, because PASS 2 still needs the project's
+			 * normal Asset Manager/chunk processing. This simply guarantees that
+			 * the external replacement packages are in the cook graph.
+			 */
+			return " -Map=" +
+				string.Join(
+					"+",
+					manifest.ExternalCookPackages);
+		}
+
+		private static string NormalizeManifestLine(
+			string value)
+		{
+			return (value ?? "")
+				.Trim()
+				.Trim('"')
+				.Replace('\\', '/')
+				.ToLowerInvariant();
+		}
+
+		private static List<string> BuildPackageManifestMatchTokens(
+			string packageName,
+			string pluginName)
+		{
+			var tokens = new List<string>();
+
+			string normalizedPackage =
+				NormalizeManifestLine(packageName);
+
+			if (string.IsNullOrWhiteSpace(normalizedPackage))
+			{
+				return tokens;
+			}
+
+			tokens.Add(normalizedPackage);
+
+			if (normalizedPackage.StartsWith("/game/"))
+			{
+				string relative =
+					normalizedPackage.Substring(
+						"/game/".Length);
+
+				tokens.Add(
+					"/content/" +
+					relative +
+					".uasset");
+
+				tokens.Add(
+					"/content/" +
+					relative);
+			}
+			else
+			{
+				string withoutLeadingSlash =
+					normalizedPackage.TrimStart('/');
+
+				int slashIndex =
+					withoutLeadingSlash.IndexOf('/');
+
+				string mountName =
+					slashIndex >= 0
+						? withoutLeadingSlash.Substring(
+							0,
+							slashIndex)
+						: withoutLeadingSlash;
+
+				string relative =
+					slashIndex >= 0
+						? withoutLeadingSlash.Substring(
+							slashIndex + 1)
+						: "";
+
+				if (!string.IsNullOrWhiteSpace(mountName) &&
+				    !string.IsNullOrWhiteSpace(relative))
+				{
+					tokens.Add(
+						"/mods/" +
+						mountName +
+						"/content/" +
+						relative +
+						".uasset");
+
+					tokens.Add(
+						"/mods/" +
+						mountName +
+						"/content/" +
+						relative);
+				}
+			}
+
+			return tokens
+				.Distinct(
+					StringComparer.OrdinalIgnoreCase)
+				.ToList();
+		}
+
+		private static bool ManifestLineMatchesPackage(
+			string manifestLine,
+			string packageName,
+			string pluginName)
+		{
+			string normalizedLine =
+				NormalizeManifestLine(manifestLine);
+
+			foreach (string token in
+				BuildPackageManifestMatchTokens(
+					packageName,
+					pluginName))
+			{
+				if (normalizedLine.Contains(token))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private static string GetChunkManifestDirectory(
+			ProjectParams chunkParams)
+		{
+			string projectDirectory =
+				Path.GetDirectoryName(
+					chunkParams.RawProjectPath.ToString());
+
+			string projectName =
+				chunkParams.RawProjectPath
+					.GetFileNameWithoutAnyExtensions();
+
+			return Path.Combine(
+				projectDirectory,
+				"Saved",
+				"Cooked",
+				"Windows",
+				projectName,
+				"Metadata",
+				"ChunkManifest"
+			);
+		}
+
+		private static void EnsureExpectedPackagesInChunkManifest(
+			ProjectParams chunkParams,
+			AlpakitPALPackagingManifest manifest,
+			string pluginName,
+			int chunkId)
+		{
+			string manifestDirectory =
+				GetChunkManifestDirectory(chunkParams);
+
+			if (!Directory.Exists(manifestDirectory))
+			{
+				throw new AutomationException(
+					"PASS 2 cook completed but the ChunkManifest directory "
+					+ "was not created: {0}",
+					manifestDirectory
+				);
+			}
+
+			string selectedManifest =
+				Path.Combine(
+					manifestDirectory,
+					$"pakchunk{chunkId}.txt");
+
+			var allManifestFiles =
+				Directory.GetFiles(
+					manifestDirectory,
+					"pakchunk*.txt",
+					SearchOption.TopDirectoryOnly)
+				.Where(
+					file =>
+						!Path.GetFileName(file).Equals(
+							"pakchunklist.txt",
+							StringComparison.OrdinalIgnoreCase))
+				.ToArray();
+
+			if (allManifestFiles.Length == 0)
+			{
+				throw new AutomationException(
+					"PASS 2 cook generated no pakchunk manifests in: {0}",
+					manifestDirectory
+				);
+			}
+
+			var manifestLines =
+				new Dictionary<string, List<string>>(
+					StringComparer.OrdinalIgnoreCase);
+
+			foreach (string manifestFile in allManifestFiles)
+			{
+				manifestLines[manifestFile] =
+					File.ReadAllLines(manifestFile)
+						.Where(
+							line =>
+								!string.IsNullOrWhiteSpace(line))
+						.ToList();
+			}
+
+			List<string> originalSelectedLines;
+
+			if (manifestLines.TryGetValue(
+					selectedManifest,
+					out List<string> existingSelectedLines))
+			{
+				originalSelectedLines =
+					new List<string>(existingSelectedLines);
+			}
+			else
+			{
+				originalSelectedLines =
+					new List<string>();
+			}
+
+			/*
+			 * IMPORTANT:
+			 *
+			 * The explicit -Map cook seed causes Unreal to cook the replacement
+			 * package's dependency graph. Asset Manager can then propagate those
+			 * dependencies into the same chunk as the replacement.
+			 *
+			 * That is useful to make sure the replacement package itself exists,
+			 * but it is NOT what an asset-replacement mod wants. PAYDAY 3 already
+			 * owns those referenced /Game packages in its base containers.
+			 *
+			 * Therefore Chunk <id> must be rebuilt from the PAL's exact package
+			 * list, not from everything Unreal decided to assign transitively.
+			 */
+			var exactSelectedLines =
+				new List<string>();
+
+			var missingFromCook =
+				new List<string>();
+
+			foreach (string expectedPackage in
+				manifest.ExpectedChunkPackages)
+			{
+				var packageLines =
+					new List<string>();
+
+				foreach (var pair in manifestLines)
+				{
+					foreach (string line in pair.Value)
+					{
+						if (ManifestLineMatchesPackage(
+								line,
+								expectedPackage,
+								pluginName))
+						{
+							packageLines.Add(line);
+						}
+					}
+				}
+
+				packageLines =
+					packageLines
+						.Distinct(
+							StringComparer.OrdinalIgnoreCase)
+						.ToList();
+
+				if (packageLines.Count == 0)
+				{
+					missingFromCook.Add(
+						expectedPackage);
+
+					continue;
+				}
+
+				exactSelectedLines.AddRange(
+					packageLines);
+
+				LogInformation(
+					"PASS 2: exact Chunk {0} package: {1} ({2} cooked manifest entr{3})",
+					chunkId,
+					expectedPackage,
+					packageLines.Count,
+					packageLines.Count == 1 ? "y" : "ies"
+				);
+			}
+
+			if (missingFromCook.Count > 0)
+			{
+				throw new AutomationException(
+					"PASS 2 did not cook {0} PAL-managed package(s):\n  {1}\n"
+					+ "Alpakit refuses to build an incomplete replacement mod.",
+					missingFromCook.Count,
+					string.Join(
+						"\n  ",
+						missingFromCook)
+				);
+			}
+
+			exactSelectedLines =
+				exactSelectedLines
+					.Distinct(
+						StringComparer.OrdinalIgnoreCase)
+					.ToList();
+
+			int removedDependencyEntries =
+				originalSelectedLines.Count(
+					line =>
+						!exactSelectedLines.Contains(
+							line,
+							StringComparer.OrdinalIgnoreCase));
+
+			Directory.CreateDirectory(
+				Path.GetDirectoryName(selectedManifest));
+
+			/*
+			 * Replace, do not append.
+			 *
+			 * This is the key difference from the previous implementation:
+			 * pakchunk333.txt now contains ONLY packages explicitly represented
+			 * by the PAL inspector's "PAL-managed chunk candidates".
+			 *
+			 * Referenced base-game assets may still be cooked temporarily by
+			 * Unreal, but they are excluded from the mod's final IoStore chunk.
+			 */
+			File.WriteAllLines(
+				selectedManifest,
+				exactSelectedLines);
+
+			List<string> verifiedLines =
+				File.ReadAllLines(selectedManifest)
+					.Where(
+						line =>
+							!string.IsNullOrWhiteSpace(line))
+					.ToList();
+
+			var stillMissing =
+				manifest.ExpectedChunkPackages
+					.Where(
+						expectedPackage =>
+							!verifiedLines.Any(
+								line =>
+									ManifestLineMatchesPackage(
+										line,
+										expectedPackage,
+										pluginName)))
+					.ToList();
+
+			if (stillMissing.Count > 0)
+			{
+				throw new AutomationException(
+					"Chunk {0} verification failed. Missing {1} expected "
+					+ "package(s):\n  {2}",
+					chunkId,
+					stillMissing.Count,
+					string.Join(
+						"\n  ",
+						stillMissing)
+				);
+			}
+
+			/*
+			 * Also verify the opposite direction: every line left in the
+			 * selected chunk must belong to one of the PAL's expected packages.
+			 * This prevents a future cooker/chunking change from silently
+			 * reintroducing dependency packages.
+			 */
+			var unexpectedLines =
+				verifiedLines
+					.Where(
+						line =>
+							!manifest.ExpectedChunkPackages.Any(
+								expectedPackage =>
+									ManifestLineMatchesPackage(
+										line,
+										expectedPackage,
+										pluginName)))
+					.ToList();
+
+			if (unexpectedLines.Count > 0)
+			{
+				throw new AutomationException(
+					"Chunk {0} exact-output verification failed. "
+					+ "{1} unexpected manifest entr{2} remain:\n  {3}",
+					chunkId,
+					unexpectedLines.Count,
+					unexpectedLines.Count == 1 ? "y" : "ies",
+					string.Join(
+						"\n  ",
+						unexpectedLines)
+				);
+			}
+
+			LogInformation(
+				"PASS 2: verified exact Chunk {0}: {1}/{1} PAL package(s), "
+				+ "{2} manifest entr{3}, {4} dependency entr{5} removed.",
+				chunkId,
+				manifest.ExpectedChunkPackages.Count,
+				verifiedLines.Count,
+				verifiedLines.Count == 1 ? "y" : "ies",
+				removedDependencyEntries,
+				removedDependencyEntries == 1 ? "y" : "ies"
+			);
+		}
+
+		private static ProjectParams GetChunkParams(
+			BuildCommand cmd,
+			AlpakitPALPackagingManifest palManifest)
 		{
 			var projectFileName = cmd.ParseRequiredStringParam("Project");
 			var projectFile = new FileReference(projectFileName);
+
+			string additionalCookerOptions =
+				"-AllowUncookedAssetReferences "
+				+ "-ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning"
+				+ BuildExplicitExternalCookOptions(palManifest);
+
+			LogInformation(
+				"PASS 2: explicitly forcing {0} external PAL package(s) into the cook graph.",
+				palManifest.ExternalCookPackages.Count
+			);
+
+			foreach (string packageName in palManifest.ExternalCookPackages)
+			{
+				LogInformation(
+					"PASS 2 force-cook: {0}",
+					packageName
+				);
+			}
 
 			var projectParameters = new ProjectParams(
 				RawProjectPath: projectFile,
@@ -359,7 +988,7 @@ namespace Alpakit.Automation
 				Build: true,
 				SkipBuildEditor: true,
 				Cook: true,
-				AdditionalCookerOptions: "-AllowUncookedAssetReferences -ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning",
+				AdditionalCookerOptions: additionalCookerOptions,
 				UnversionedCookedContent: true,
 				SkipCookingEditorContent: true,
 				Compressed: true,
@@ -1591,6 +2220,211 @@ namespace Alpakit.Automation
 			}
 		}
 
+		/// <summary>
+		/// PASS 2 only needs a valid Shipping target receipt so Unreal can
+		/// construct a normal project DeploymentContext. The receipt may contain
+		/// content-only plugins that used to exist under <Project>/Mods.
+		///
+		/// Rebuilding the entire Shipping target just because /Mods changed is
+		/// extremely expensive and unnecessary. Instead, temporarily strip all
+		/// project /Mods plugin entries from the receipt while PASS 2 staging is
+		/// created, then restore the receipt byte-for-byte afterwards.
+		/// </summary>
+		private static string SanitizeShippingReceiptForModStaging(
+			string shippingReceipt,
+			string projectDirectory)
+		{
+			if (!FileExists(shippingReceipt))
+			{
+				throw new AutomationException(
+					"Cannot sanitize missing Shipping receipt: {0}",
+					shippingReceipt
+				);
+			}
+
+			string originalReceipt =
+				File.ReadAllText(shippingReceipt);
+
+			SystemJsonNode rootNode;
+
+			try
+			{
+				rootNode = SystemJsonNode.Parse(originalReceipt);
+			}
+			catch (Exception exception)
+			{
+				throw new AutomationException(
+					"Could not parse Shipping target receipt '{0}': {1}",
+					shippingReceipt,
+					exception.Message
+				);
+			}
+
+			SystemJsonObject rootObject =
+				rootNode as SystemJsonObject;
+
+			if (rootObject == null)
+			{
+				throw new AutomationException(
+					"Shipping target receipt '{0}' is not a JSON object.",
+					shippingReceipt
+				);
+			}
+
+			SystemJsonArray plugins =
+				rootObject["Plugins"] as SystemJsonArray;
+
+			if (plugins == null || plugins.Count == 0)
+			{
+				LogInformation(
+					"PASS 2: Shipping receipt has no plugin entries to sanitize."
+				);
+
+				return null;
+			}
+
+			int removedCount = 0;
+
+			/*
+			 * Receipt plugin entries normally contain a Descriptor path such as:
+			 *
+			 *   ../../../PAYDAY3/Mods/Test/Test.uplugin
+			 *
+			 * Use the serialized entry rather than depending on one exact UE
+			 * receipt schema/property name. This keeps the check compatible if
+			 * UE stores the descriptor under Descriptor/File/Path.
+			 */
+			for (int index = plugins.Count - 1;
+				 index >= 0;
+				 --index)
+			{
+				SystemJsonNode pluginNode =
+					plugins[index];
+
+				if (pluginNode == null)
+				{
+					continue;
+				}
+
+				string serialized =
+					pluginNode.ToJsonString();
+
+				string normalized =
+					serialized
+						.Replace("\\\\", "/")
+						.Replace("\\", "/");
+
+				bool isProjectMod =
+					normalized.IndexOf(
+						"/Mods/",
+						StringComparison.OrdinalIgnoreCase
+					) >= 0;
+
+				if (!isProjectMod)
+				{
+					continue;
+				}
+
+				string pluginName = "";
+
+				if (pluginNode is SystemJsonObject pluginObject)
+				{
+					try
+					{
+						pluginName =
+							pluginObject["Name"]?.GetValue<string>()
+							?? "";
+					}
+					catch
+					{
+						pluginName = "";
+					}
+				}
+
+				LogInformation(
+					"PASS 2: temporarily removing /Mods plugin from Shipping receipt: {0}",
+					string.IsNullOrWhiteSpace(pluginName)
+						? serialized
+						: pluginName
+				);
+
+				plugins.RemoveAt(index);
+				++removedCount;
+			}
+
+			if (removedCount == 0)
+			{
+				LogInformation(
+					"PASS 2: Shipping receipt contains no /Mods plugin entries."
+				);
+
+				return null;
+			}
+
+			try
+			{
+				string sanitizedReceipt =
+					rootObject.ToJsonString(
+						new JsonSerializerOptions
+						{
+							WriteIndented = true
+						}
+					);
+
+				File.WriteAllText(
+					shippingReceipt,
+					sanitizedReceipt
+				);
+			}
+			catch (Exception exception)
+			{
+				throw new AutomationException(
+					"Could not write sanitized Shipping target receipt '{0}': {1}",
+					shippingReceipt,
+					exception.Message
+				);
+			}
+
+			LogInformation(
+				"PASS 2: sanitized Shipping receipt for staging; removed {0} project /Mods plugin entr{1}.",
+				removedCount,
+				removedCount == 1 ? "y" : "ies"
+			);
+
+			return originalReceipt;
+		}
+
+		private static void RestoreShippingReceipt(
+			string shippingReceipt,
+			string originalReceipt)
+		{
+			if (string.IsNullOrWhiteSpace(shippingReceipt) ||
+			    originalReceipt == null)
+			{
+				return;
+			}
+
+			try
+			{
+				File.WriteAllText(
+					shippingReceipt,
+					originalReceipt
+				);
+
+				LogInformation(
+					"PASS 2: restored original Shipping target receipt."
+				);
+			}
+			catch (Exception exception)
+			{
+				LogWarning(
+					"PASS 2: failed to restore original Shipping target receipt '{0}': {1}",
+					shippingReceipt,
+					exception.Message
+				);
+			}
+		}
+
 		private static void ExecuteTwoStageCook(
 			BuildCommand cmd,
 			PD3Params pd3Params,
@@ -1601,6 +2435,8 @@ namespace Alpakit.Automation
 			IReadOnlyList<DeploymentContext> dlcContexts = null;
 			IReadOnlyList<DeploymentContext> chunkContexts = null;
 			string workingPluginDirectory = null;
+			string shippingReceipt = null;
+			string originalShippingReceipt = null;
 
 			try
 			{
@@ -1665,7 +2501,27 @@ namespace Alpakit.Automation
 				);
 
 				result.SetPhase("PASS 2: Prepare PAL chunk cook");
-				var chunkParams = GetChunkParams(cmd);
+
+				AlpakitPALPackagingManifest palManifest =
+					LoadPALPackagingManifest(
+						cmd,
+						pluginName,
+						chunkId
+					);
+
+				LogInformation(
+					"PASS 2 deterministic PAL input: {0} expected Chunk {1} package(s), "
+					+ "{2} external package(s) explicitly forced into cook.",
+					palManifest.ExpectedChunkPackages.Count,
+					chunkId,
+					palManifest.ExternalCookPackages.Count
+				);
+
+				var chunkParams =
+					GetChunkParams(
+						cmd,
+						palManifest
+					);
 
 				/*
 				 * Normal project staging needs a non-editor target receipt and its
@@ -1694,7 +2550,7 @@ namespace Alpakit.Automation
 					chunkParams.RawProjectPath
 						.GetFileNameWithoutAnyExtensions();
 
-				var shippingReceipt = Path.Combine(
+				shippingReceipt = Path.Combine(
 					projectDirectory,
 					"Binaries",
 					"Win64",
@@ -1704,17 +2560,18 @@ namespace Alpakit.Automation
 				if (!FileExists(shippingReceipt))
 				{
 					LogInformation(
-						"PASS 2: Shipping receipt does not exist. Building game target only: {0}",
+						"PASS 2: Shipping receipt does not exist. Building game target once: {0}",
 						shippingReceipt
 					);
 
 					/*
 					 * UE 5.5's ProjectBuildTargets enum does not expose a Client
 					 * member. Use All, but GetChunkParams sets SkipBuildEditor=true,
-					 * so Project.Build will build the cooked game/Shipping target
+					 * so Project.Build creates the cooked game/Shipping target
 					 * without rebuilding PAYDAY3Editor.
 					 *
-					 * PASS 2 only needs the game/Shipping receipt for staging.
+					 * Once this receipt exists, normal mod creation/deletion no
+					 * longer forces another C++ build.
 					 */
 					result.SetPhase("PASS 2: Build Shipping target");
 					Project.Build(
@@ -1727,13 +2584,36 @@ namespace Alpakit.Automation
 				else
 				{
 					LogInformation(
-						"PASS 2: Shipping receipt already exists. Skipping game build: {0}",
+						"PASS 2: reusing existing Shipping receipt (no rebuild): {0}",
 						shippingReceipt
 					);
 				}
 
 				result.SetPhase("PASS 2: Cook PAL chunk");
 				Project.Cook(chunkParams);
+
+				result.SetPhase("PASS 2: Verify PAL chunk");
+
+				EnsureExpectedPackagesInChunkManifest(
+					chunkParams,
+					palManifest,
+					pluginName,
+					chunkId
+				);
+
+				/*
+				 * Project.CreateDeploymentContext reads the Shipping receipt and
+				 * later staging uses its plugin list. Remove all <Project>/Mods
+				 * entries temporarily so deleted/renamed content-only mods cannot
+				 * break staging.
+				 */
+				result.SetPhase("PASS 2: Sanitize Shipping receipt");
+
+				originalShippingReceipt =
+					SanitizeShippingReceiptForModStaging(
+						shippingReceipt,
+						projectDirectory
+					);
 
 				chunkContexts =
 					CreateDeploymentContexts(chunkParams);
@@ -1788,6 +2668,15 @@ namespace Alpakit.Automation
 			}
 			finally
 			{
+				/*
+				 * Receipt sanitization is deliberately temporary. The real target
+				 * receipt is restored exactly as it was even if PASS 2 fails.
+				 */
+				RestoreShippingReceipt(
+					shippingReceipt,
+					originalShippingReceipt
+				);
+
 				CleanStagingDirectories(dlcContexts);
 				CleanStagingDirectories(chunkContexts);
 				CleanWorkingPluginDirectory(

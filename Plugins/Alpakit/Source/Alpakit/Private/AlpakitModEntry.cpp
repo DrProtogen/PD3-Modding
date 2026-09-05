@@ -26,6 +26,7 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformMisc.h"
@@ -185,17 +186,95 @@ namespace
 			return FString();
 		}
 
-		const FString Root =
+		/*
+		 * FPaths::EngineDir() is:
+		 *
+		 *   G:/Program Files/Epic Games/UE_5.5/Engine/
+		 *
+		 * AutomationTool keys its log folder from LocalRoot, which is the
+		 * parent of Engine:
+		 *
+		 *   G:/Program Files/Epic Games/UE_5.5
+		 *
+		 * Do not construct this using EngineDir/..; NormalizeDirectoryName()
+		 * does not reliably collapse ".." on every path form and that can
+		 * produce a bogus folder such as:
+		 *
+		 *   G+Program+Files+Epic+Games+UE_5.5+Engine+..
+		 */
+		FString CurrentEngineDir =
+			FPaths::ConvertRelativePathToFull(
+				FPaths::EngineDir());
+
+		FPaths::NormalizeDirectoryName(
+			CurrentEngineDir);
+
+		const FString EngineRoot =
+			FPaths::GetPath(
+				CurrentEngineDir);
+
+		FString EngineLogFolderName =
+			EngineRoot;
+
+		// AutomationTool folder-safe LocalRoot form:
+		// G:/Program Files/Epic Games/UE_5.5
+		// -> G+Program+Files+Epic+Games+UE_5.5
+		EngineLogFolderName.ReplaceInline(
+			TEXT(":"),
+			TEXT(""));
+
+		EngineLogFolderName.ReplaceInline(
+			TEXT("\\"),
+			TEXT("+"));
+
+		EngineLogFolderName.ReplaceInline(
+			TEXT("/"),
+			TEXT("+"));
+
+		EngineLogFolderName.ReplaceInline(
+			TEXT(" "),
+			TEXT("+"));
+
+		while (EngineLogFolderName.Contains(
+			TEXT("++")))
+		{
+			EngineLogFolderName.ReplaceInline(
+				TEXT("++"),
+				TEXT("+"));
+		}
+
+		EngineLogFolderName.RemoveFromStart(
+			TEXT("+"));
+
+		EngineLogFolderName.RemoveFromEnd(
+			TEXT("+"));
+
+		const FString EngineSpecificRoot =
 			FPaths::Combine(
 				AppData,
 				TEXT("Unreal Engine"),
 				TEXT("AutomationTool"),
-				TEXT("Logs"));
+				TEXT("Logs"),
+				EngineLogFolderName);
 
-		return IFileManager::Get().DirectoryExists(
-				*Root)
-			? Root
-			: FString();
+		UE_LOG(
+			LogAlpakit,
+			Verbose,
+			TEXT(
+				"AutomationTool log fallback for current editor engine: "
+				"EngineDir='%s', LocalRoot='%s', LogRoot='%s'"
+			),
+			*CurrentEngineDir,
+			*EngineRoot,
+			*EngineSpecificRoot);
+
+		if (IFileManager::Get().DirectoryExists(
+				*EngineSpecificRoot))
+		{
+			return EngineSpecificRoot;
+		}
+
+		return FString();
 	}
 
 	FString FindNewestAutomationToolTextLog(
@@ -262,6 +341,13 @@ namespace
 			return FString();
 		}
 
+		/*
+		 * Prefer AutomationTool's canonical Log.txt. If it is absent, search
+		 * only the current engine's per-user UAT folder. Do not recurse through
+		 * Engine/Programs/AutomationTool/Saved because that directory contains
+		 * response files such as PakList*.txt and IoStoreCommands.txt which are
+		 * not AutomationTool logs.
+		 */
 		const FString StandardLog =
 			FPaths::Combine(
 				LogRoot,
@@ -320,6 +406,12 @@ namespace
 			const bool bRelevant =
 				Line.Contains(
 					TEXT("Error:"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("error CS"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("Exception:"),
 					ESearchCase::IgnoreCase) ||
 				Line.Contains(
 					TEXT("AutomationException"),
@@ -597,10 +689,27 @@ namespace
 		const FString& ResultType,
 		double RunTime,
 		const FString& ResultFile,
+		const FString& ExplicitUATLogFile,
 		int32 RemainingModCount)
 	{
 		FAlpakitUATResult Result =
 			LoadAlpakitUATResult(ResultFile);
+
+		if (!ExplicitUATLogFile.IsEmpty() &&
+			IFileManager::Get().FileExists(
+				*ExplicitUATLogFile))
+		{
+			/*
+			 * The explicit -log file is authoritative for this exact packaging
+			 * invocation, including failures that happen before ExecuteBuild().
+			 */
+			Result.LogFile =
+				ExplicitUATLogFile;
+
+			Result.LogFolder =
+				FPaths::GetPath(
+					ExplicitUATLogFile);
+		}
 
 		if (Result.PluginName.IsEmpty())
 		{
@@ -1470,6 +1579,215 @@ namespace
 		}
 
 		return Report;
+	}
+
+	FString PALObjectPathToPackageName(
+		const FString& ObjectPath)
+	{
+		if (ObjectPath.IsEmpty())
+		{
+			return FString();
+		}
+
+		const FString PackageName =
+			FPackageName::ObjectPathToPackageName(ObjectPath);
+
+		return FPackageName::IsValidLongPackageName(
+				PackageName,
+				true)
+			? PackageName
+			: FString();
+	}
+
+	void AddUniquePackageNameFromObjectPath(
+		TArray<FString>& PackageNames,
+		const FString& ObjectPath)
+	{
+		const FString PackageName =
+			PALObjectPathToPackageName(ObjectPath);
+
+		if (!PackageName.IsEmpty())
+		{
+			PackageNames.AddUnique(PackageName);
+		}
+	}
+
+	bool WritePALPackagingManifest(
+		const IPlugin& Plugin,
+		const int32 ChunkId,
+		const FString& ManifestFile)
+	{
+		const FAlpakitPALInspectionData Data =
+			BuildPALInspectionData(Plugin);
+
+		if (!Data.bPALFound)
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"Cannot write PAL packaging manifest for %s: "
+					"PAL was not found at %s."
+				),
+				*Plugin.GetName(),
+				*Data.PALPackagePath);
+
+			return false;
+		}
+
+		if (Data.ChunkId != ChunkId)
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"Cannot write PAL packaging manifest for %s: "
+					"requested Chunk %d but PAL currently uses Chunk %d."
+				),
+				*Plugin.GetName(),
+				ChunkId,
+				Data.ChunkId);
+
+			return false;
+		}
+
+		TArray<FString> ExternalCookPackages;
+		TArray<FString> ExpectedChunkPackages;
+
+		for (const FString& ObjectPath : Data.ExternalAssets)
+		{
+			AddUniquePackageNameFromObjectPath(
+				ExternalCookPackages,
+				ObjectPath);
+		}
+
+		for (const FString& ObjectPath : Data.ExternalBlueprints)
+		{
+			AddUniquePackageNameFromObjectPath(
+				ExternalCookPackages,
+				ObjectPath);
+		}
+
+		for (const FString& ObjectPath : Data.ManagedChunkCandidates)
+		{
+			AddUniquePackageNameFromObjectPath(
+				ExpectedChunkPackages,
+				ObjectPath);
+		}
+
+		ExternalCookPackages.Sort();
+		ExpectedChunkPackages.Sort();
+
+		if (ExternalCookPackages.Num() == 0)
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"Two-stage packaging was selected for %s, but no "
+					"external package names could be generated from its PAL."
+				),
+				*Plugin.GetName());
+
+			return false;
+		}
+
+		TSharedRef<FJsonObject> RootObject =
+			MakeShared<FJsonObject>();
+
+		RootObject->SetStringField(
+			TEXT("PluginName"),
+			Plugin.GetName());
+
+		RootObject->SetNumberField(
+			TEXT("ChunkId"),
+			ChunkId);
+
+		RootObject->SetStringField(
+			TEXT("PAL"),
+			Data.PALPackagePath);
+
+		TArray<TSharedPtr<FJsonValue>> ExternalValues;
+		for (const FString& PackageName : ExternalCookPackages)
+		{
+			ExternalValues.Add(
+				MakeShared<FJsonValueString>(
+					PackageName));
+		}
+
+		TArray<TSharedPtr<FJsonValue>> ExpectedValues;
+		for (const FString& PackageName : ExpectedChunkPackages)
+		{
+			ExpectedValues.Add(
+				MakeShared<FJsonValueString>(
+					PackageName));
+		}
+
+		RootObject->SetArrayField(
+			TEXT("ExternalCookPackages"),
+			ExternalValues);
+
+		RootObject->SetArrayField(
+			TEXT("ExpectedChunkPackages"),
+			ExpectedValues);
+
+		FString JsonText;
+		const TSharedRef<TJsonWriter<>> Writer =
+			TJsonWriterFactory<>::Create(&JsonText);
+
+		if (!FJsonSerializer::Serialize(
+				RootObject,
+				Writer))
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"Failed to serialize PAL packaging manifest for %s."
+				),
+				*Plugin.GetName());
+
+			return false;
+		}
+
+		if (!FFileHelper::SaveStringToFile(
+				JsonText,
+				*ManifestFile))
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"Failed to write PAL packaging manifest for %s: %s"
+				),
+				*Plugin.GetName(),
+				*ManifestFile);
+
+			return false;
+		}
+
+		UE_LOG(
+			LogAlpakit,
+			Display,
+			TEXT(
+				"Wrote deterministic PAL packaging manifest for %s: "
+				"%d external cook package(s), %d expected Chunk %d package(s)."
+			),
+			*Plugin.GetName(),
+			ExternalCookPackages.Num(),
+			ExpectedChunkPackages.Num(),
+			ChunkId);
+
+		for (const FString& PackageName : ExternalCookPackages)
+		{
+			UE_LOG(
+				LogAlpakit,
+				Display,
+				TEXT("  Force cook external package: %s"),
+				*PackageName);
+		}
+
+		return true;
 	}
 
 	int32 GetModChunkIdIfExternalContentExists(const IPlugin& Plugin)
@@ -2654,14 +2972,6 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
     // the plugin mount. Mods containing only plugin assets stay on the fast
     // original single-stage DLC path.
     const int32 ChunkId = GetModChunkIdIfExternalContentExists(*Mod);
-    if (ChunkId >= 0)
-    {
-        AdditionalUATArguments.Append(
-            FString::Printf(TEXT("-ChunkId=%d "), ChunkId)
-        );
-    }
-
-    UE_LOG(LogAlpakit, Display, TEXT("Packaging plugin \"%s\". %d remaining"), *PluginName, NextEntries.Num());
 
     const FString ResultDirectory =
         FPaths::Combine(
@@ -2672,6 +2982,51 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
     IFileManager::Get().MakeDirectory(
         *ResultDirectory,
         true);
+
+    if (ChunkId >= 0)
+    {
+        AdditionalUATArguments.Append(
+            FString::Printf(TEXT("-ChunkId=%d "), ChunkId)
+        );
+
+        const FString PALPackagingManifestFile =
+            FPaths::Combine(
+                ResultDirectory,
+                FPaths::MakeValidFileName(
+                    PluginName +
+                    TEXT("_PALPackaging.json")));
+
+        IFileManager::Get().Delete(
+            *PALPackagingManifestFile,
+            false,
+            true,
+            true);
+
+        if (!WritePALPackagingManifest(
+                *Mod,
+                ChunkId,
+                PALPackagingManifestFile))
+        {
+            FMessageDialog::Open(
+                EAppMsgType::Ok,
+                FText::FromString(
+                    FString::Printf(
+                        TEXT(
+                            "Alpakit could not build the deterministic PAL "
+                            "package list for '%s'. Packaging has been stopped."
+                        ),
+                        *PluginName)));
+
+            return;
+        }
+
+        AdditionalUATArguments.Append(
+            FString::Printf(
+                TEXT("-AlpakitPALManifestFile=\"%s\" "),
+                *PALPackagingManifestFile));
+    }
+
+    UE_LOG(LogAlpakit, Display, TEXT("Packaging plugin \"%s\". %d remaining"), *PluginName, NextEntries.Num());
 
     const FString ResultFile =
         FPaths::Combine(
@@ -2691,6 +3046,29 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
             TEXT("-AlpakitResultFile=\"%s\" "),
             *ResultFile));
 
+    const FString UATLogFile =
+        FPaths::Combine(
+            ResultDirectory,
+            FPaths::MakeValidFileName(
+                PluginName + TEXT("_UAT.log")));
+
+    // Ensure the failure window can never show a stale log from an older run.
+    IFileManager::Get().Delete(
+        *UATLogFile,
+        false,
+        true,
+        true);
+
+    /*
+     * Give AutomationTool an explicit log path that belongs to THIS mod run.
+     * This is much more reliable than trying to infer the correct file after a
+     * very-early script/command failure.
+     */
+    AdditionalUATArguments.Append(
+        FString::Printf(
+            TEXT("-log=\"%s\" "),
+            *UATLogFile));
+
     const FString CommandLine = FString::Printf(
         TEXT("-ScriptsForProject=\"%s\" PackagePlugin -Project=\"%s\" -PluginName=\"%s\" -GameDir=\"%s\" %s"),
         *ProjectPath,
@@ -2708,7 +3086,7 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
         LOCTEXT("PackageModTaskShortName", "Package Mod Task"),
         FAlpakitStyle::Get().GetBrush("Alpakit.OpenPluginWindow"),
         nullptr,
-        [PluginName, ResultFile, NextEntries](
+        [PluginName, ResultFile, UATLogFile, NextEntries](
             FString resultType,
             double runTime)
         {
@@ -2716,6 +3094,7 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
                 ENamedThreads::GameThread,
                 [PluginName,
                  ResultFile,
+                 UATLogFile,
                  NextEntries,
                  resultType,
                  runTime]()
@@ -2736,6 +3115,7 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
                             resultType,
                             runTime,
                             ResultFile,
+                            UATLogFile,
                             NextEntries.Num());
 
                         return;
