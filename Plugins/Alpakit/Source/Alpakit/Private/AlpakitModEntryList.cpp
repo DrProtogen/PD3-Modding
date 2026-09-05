@@ -3,6 +3,8 @@
 #include "AlpakitModEntry.h"
 #include "Interfaces/IPluginManager.h"
 #include "Slate.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
 
 #define LOCTEXT_NAMESPACE "AlpakitModListEntry"
 
@@ -78,7 +80,40 @@ bool DoesPluginHaveRuntime(const IPlugin& Plugin) {
 void SAlpakitModEntryList::LoadMods() {
     Mods.Empty();
     const TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPlugins();
+    const FString ProjectModsDir =
+        FPaths::ConvertRelativePathToFull(
+            FPaths::Combine(
+                FPaths::ProjectDir(),
+                TEXT("Mods")));
+
     for (TSharedRef<IPlugin> Plugin : EnabledPlugins) {
+        /*
+         * Remove deleted mods from the Alpakit list immediately, even if
+         * IPluginManager still has a stale in-memory entry for a frame.
+         */
+        FString PluginBaseDir =
+            FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir());
+
+        FString NormalizedProjectModsDir = ProjectModsDir;
+        FPaths::NormalizeDirectoryName(PluginBaseDir);
+        FPaths::NormalizeDirectoryName(NormalizedProjectModsDir);
+
+        const FString ProjectModsPrefix =
+            NormalizedProjectModsDir.EndsWith(TEXT("/"))
+                ? NormalizedProjectModsDir
+                : NormalizedProjectModsDir + TEXT("/");
+
+        const bool bLivesInProjectMods =
+            PluginBaseDir.StartsWith(
+                ProjectModsPrefix,
+                ESearchCase::IgnoreCase);
+
+        if (bLivesInProjectMods &&
+            !IFileManager::Get().DirectoryExists(*PluginBaseDir))
+        {
+            continue;
+        }
+
         //Only include project plugins for now
         //TODO make sure UAT task supports engine plugins
         if ((bShowEngine && Plugin->GetType() == EPluginType::Engine) ||

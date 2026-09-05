@@ -373,6 +373,138 @@ void FAlpakitModule::EnsureAssetManagerRegistrationForPlugin(IPlugin& Plugin)
     }
 }
 
+void FAlpakitModule::RemoveAssetManagerRegistrationForPlugin(
+    const FString& PluginName,
+    const FString& PluginMountPath)
+{
+    UAssetManagerSettings* AssetManagerSettings =
+        GetMutableDefault<UAssetManagerSettings>();
+
+    if (!AssetManagerSettings)
+    {
+        UE_LOG(
+            LogAlpakit,
+            Error,
+            TEXT("Unable to get UAssetManagerSettings while removing mod %s"),
+            *PluginName);
+        return;
+    }
+
+    FPrimaryAssetTypeInfo* PrimaryAssetLabelType =
+        AssetManagerSettings->PrimaryAssetTypesToScan.FindByPredicate(
+            [](const FPrimaryAssetTypeInfo& TypeInfo)
+            {
+                return TypeInfo.PrimaryAssetType ==
+                    FName(TEXT("PrimaryAssetLabel"));
+            });
+
+    if (!PrimaryAssetLabelType)
+    {
+        UE_LOG(
+            LogAlpakit,
+            Warning,
+            TEXT("Asset Manager has no PrimaryAssetLabel entry while removing mod %s"),
+            *PluginName);
+        return;
+    }
+
+    FString NormalizedMountPath = PluginMountPath;
+    NormalizedMountPath.RemoveFromEnd(TEXT("/"));
+
+    if (NormalizedMountPath.IsEmpty())
+    {
+        NormalizedMountPath =
+            FString::Printf(TEXT("/%s"), *PluginName);
+    }
+
+    const FPrimaryAssetTypeInfo& CurrentTypeInfo = *PrimaryAssetLabelType;
+
+    TArray<FDirectoryPath> Directories =
+        CurrentTypeInfo.GetDirectories();
+
+    TArray<FSoftObjectPath> SpecificAssets =
+        CurrentTypeInfo.GetSpecificAssets();
+
+    const int32 RemovedDirectoryCount =
+        Directories.RemoveAll(
+            [&NormalizedMountPath](const FDirectoryPath& Directory)
+            {
+                return Directory.Path.Equals(
+                    NormalizedMountPath,
+                    ESearchCase::IgnoreCase);
+            });
+
+    const FString MountPrefix = NormalizedMountPath + TEXT("/");
+
+    const int32 RemovedSpecificAssetCount =
+        SpecificAssets.RemoveAll(
+            [&NormalizedMountPath, &MountPrefix](
+                const FSoftObjectPath& AssetPath)
+            {
+                if (AssetPath.IsNull())
+                {
+                    return false;
+                }
+
+                const FString PathString = AssetPath.ToString();
+
+                return PathString.Equals(
+                           NormalizedMountPath,
+                           ESearchCase::IgnoreCase) ||
+                       PathString.StartsWith(
+                           MountPrefix,
+                           ESearchCase::IgnoreCase);
+            });
+
+    if (RemovedDirectoryCount == 0 &&
+        RemovedSpecificAssetCount == 0)
+    {
+        UE_LOG(
+            LogAlpakit,
+            Verbose,
+            TEXT("No Asset Manager registration found for deleted mod %s"),
+            *PluginName);
+        return;
+    }
+
+    UClass* AssetBaseClass =
+        CurrentTypeInfo.GetAssetBaseClass().LoadSynchronous();
+
+    if (!AssetBaseClass)
+    {
+        UE_LOG(
+            LogAlpakit,
+            Error,
+            TEXT("Could not load Asset Base Class while removing Asset Manager registration for %s"),
+            *PluginName);
+        return;
+    }
+
+    FPrimaryAssetTypeInfo UpdatedTypeInfo(
+        CurrentTypeInfo.PrimaryAssetType,
+        AssetBaseClass,
+        CurrentTypeInfo.bHasBlueprintClasses,
+        CurrentTypeInfo.bIsEditorOnly,
+        MoveTemp(Directories),
+        MoveTemp(SpecificAssets));
+
+    UpdatedTypeInfo.Rules = CurrentTypeInfo.Rules;
+    *PrimaryAssetLabelType = MoveTemp(UpdatedTypeInfo);
+
+    SaveAndRefreshAssetManagerSettings();
+
+    UE_LOG(
+        LogAlpakit,
+        Display,
+        TEXT(
+            "Removed Asset Manager registration for mod %s "
+            "(Directories removed: %d, Specific Assets removed: %d)"
+        ),
+        *PluginName,
+        RemovedDirectoryCount,
+        RemovedSpecificAssetCount);
+}
+
 void FAlpakitModule::RegisterModTemplates()
 {
     bool bAssetManagerChanged = false;

@@ -12,6 +12,11 @@
 #include "Engine/PrimaryAssetLabel.h"
 #include "EditorAssetLibrary.h"
 #include "Modules/ModuleManager.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
+#include "Misc/PackageName.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
 
 #define LOCTEXT_NAMESPACE "AlpakitModListEntry"
 
@@ -207,6 +212,54 @@ void SAlpakitModEntry::Construct(const FArguments& Args, TSharedRef<IPlugin> InM
             })
             .ToolTipText_Lambda([this](){
                 return FText::FromString(FString::Printf(TEXT("Edit %s"), *this->Mod->GetName()));
+            })
+        ]
+        + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 5, 0).VAlign(VAlign_Center)[
+            SNew(SButton)
+            .Text(LOCTEXT("DeleteModAlpakit", "Delete"))
+            .OnClicked(this, &SAlpakitModEntry::OnDeleteMod)
+            .Visibility_Lambda([this]()
+            {
+                if (!Mod.IsValid())
+                {
+                    return EVisibility::Collapsed;
+                }
+
+                FString ModBaseDir =
+                    FPaths::ConvertRelativePathToFull(Mod->GetBaseDir());
+
+                FString ProjectModsDir =
+                    FPaths::ConvertRelativePathToFull(
+                        FPaths::Combine(
+                            FPaths::ProjectDir(),
+                            TEXT("Mods")));
+
+                FPaths::NormalizeDirectoryName(ModBaseDir);
+                FPaths::NormalizeDirectoryName(ProjectModsDir);
+
+                const FString ProjectModsPrefix =
+                    ProjectModsDir.EndsWith(TEXT("/"))
+                        ? ProjectModsDir
+                        : ProjectModsDir + TEXT("/");
+
+                const bool bIsInsideProjectMods =
+                    ModBaseDir.StartsWith(
+                        ProjectModsPrefix,
+                        ESearchCase::IgnoreCase) &&
+                    ModBaseDir.Len() > ProjectModsPrefix.Len();
+
+                return bIsInsideProjectMods
+                    ? EVisibility::Visible
+                    : EVisibility::Collapsed;
+            })
+            .ToolTipText_Lambda([this]()
+            {
+                return Mod.IsValid()
+                    ? FText::FromString(
+                        FString::Printf(
+                            TEXT("Permanently delete %s"),
+                            *Mod->GetName()))
+                    : FText::GetEmpty();
             })
         ]
         + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[
@@ -409,6 +462,241 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
             });
         }
     );
+}
+
+FReply SAlpakitModEntry::OnDeleteMod()
+{
+    if (!Mod.IsValid())
+    {
+        return FReply::Handled();
+    }
+
+    const FString PluginName = Mod->GetName();
+    const FString PluginMountPath = Mod->GetMountedAssetPath();
+    const FString DescriptorFileName = Mod->GetDescriptorFileName();
+
+    // Capture the mount's physical content directory before deleting it.
+    FString PluginContentDir =
+        FPaths::ConvertRelativePathToFull(Mod->GetContentDir());
+    FPaths::NormalizeDirectoryName(PluginContentDir);
+
+    FString ModBaseDir =
+        FPaths::ConvertRelativePathToFull(Mod->GetBaseDir());
+
+    FString ProjectModsDir =
+        FPaths::ConvertRelativePathToFull(
+            FPaths::Combine(
+                FPaths::ProjectDir(),
+                TEXT("Mods")));
+
+    FPaths::NormalizeDirectoryName(ModBaseDir);
+    FPaths::NormalizeDirectoryName(ProjectModsDir);
+
+    const FString ProjectModsPrefix =
+        ProjectModsDir.EndsWith(TEXT("/"))
+            ? ProjectModsDir
+            : ProjectModsDir + TEXT("/");
+
+    /*
+     * Never allow this button to recursively delete anything outside the
+     * project's Mods directory, even if an unexpected plugin descriptor is
+     * classified as EPluginType::Mod.
+     */
+    if (!ModBaseDir.StartsWith(
+            ProjectModsPrefix,
+            ESearchCase::IgnoreCase) ||
+        ModBaseDir.Len() <= ProjectModsPrefix.Len())
+    {
+        const FText ErrorText = FText::FromString(
+            FString::Printf(
+                TEXT(
+                    "Alpakit refused to delete '%s' because its directory is "
+                    "outside the project's Mods folder.\n\n%s"
+                ),
+                *PluginName,
+                *ModBaseDir));
+
+        FMessageDialog::Open(
+            EAppMsgType::Ok,
+            ErrorText);
+
+        return FReply::Handled();
+    }
+
+    const FText ConfirmationText = FText::FromString(
+        FString::Printf(
+            TEXT(
+                "Permanently delete mod '%s'?\n\n"
+                "This will permanently delete the entire mod folder:\n"
+                "%s\n\n"
+                "Alpakit will also remove the mod from the Asset Manager "
+                "PrimaryAssetLabel directories and specific assets.\n\n"
+                "THIS CANNOT BE UNDONE.\n\n"
+                "Are you sure you want to continue?"
+            ),
+            *PluginName,
+            *ModBaseDir));
+
+    if (FMessageDialog::Open(
+            EAppMsgType::YesNo,
+            ConfirmationText) != EAppReturnType::Yes)
+    {
+        return FReply::Handled();
+    }
+
+    /*
+     * Delete the folder first. If Windows has a loaded DLL or another file
+     * locked, leave the Asset Manager configuration untouched and report the
+     * failure instead of creating a half-deleted registration state.
+     */
+    if (!IFileManager::Get().DeleteDirectory(
+            *ModBaseDir,
+            false, // RequireExists
+            true)) // Tree
+    {
+        const FText ErrorText = FText::FromString(
+            FString::Printf(
+                TEXT(
+                    "Failed to delete mod '%s'.\n\n"
+                    "The directory could not be removed:\n%s\n\n"
+                    "A file may still be in use. The mod has NOT been removed "
+                    "from the Asset Manager."
+                ),
+                *PluginName,
+                *ModBaseDir));
+
+        FMessageDialog::Open(
+            EAppMsgType::Ok,
+            ErrorText);
+
+        return FReply::Handled();
+    }
+
+    /*
+     * Refresh the Asset Registry against the now-deleted directory while the
+     * package mount still exists. A force rescan drops the old on-disk asset
+     * entries and finds nothing to replace them with.
+     */
+    FString RegistryMountPath = PluginMountPath;
+    RegistryMountPath.RemoveFromEnd(TEXT("/"));
+
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+            TEXT("AssetRegistry"));
+
+    IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+    TArray<FString> DeletedScanPaths;
+    DeletedScanPaths.Add(RegistryMountPath);
+
+    AssetRegistry.ScanPathsSynchronous(
+        DeletedScanPaths,
+        true // bForceRescan
+    );
+
+    /*
+     * Remove any now-empty cached subpaths as well. Do deepest paths first so
+     * parents can be removed cleanly afterwards.
+     */
+    TArray<FString> CachedSubPaths;
+    AssetRegistry.GetSubPaths(
+        RegistryMountPath,
+        CachedSubPaths,
+        true);
+
+    CachedSubPaths.Sort(
+        [](const FString& A, const FString& B)
+        {
+            return A.Len() > B.Len();
+        });
+
+    for (const FString& CachedSubPath : CachedSubPaths)
+    {
+        AssetRegistry.RemovePath(CachedSubPath);
+    }
+
+    AssetRegistry.RemovePath(RegistryMountPath);
+
+    /*
+     * Remove the package mount itself. Content Browser listens to mount/path
+     * changes, so this removes the deleted mod root from the Sources panel
+     * instead of leaving an empty /<ModName> folder until editor restart.
+     */
+    FString RootMountPath = RegistryMountPath;
+    if (!RootMountPath.EndsWith(TEXT("/")))
+    {
+        RootMountPath += TEXT("/");
+    }
+
+    FPackageName::UnRegisterMountPoint(
+        RootMountPath,
+        PluginContentDir);
+
+    // Remove /<ModName> and any /<ModName>/... Specific Assets.
+    FAlpakitModule& AlpakitModule =
+        FModuleManager::LoadModuleChecked<FAlpakitModule>(
+            TEXT("Alpakit"));
+
+    AlpakitModule.RemoveAssetManagerRegistrationForPlugin(
+        PluginName,
+        PluginMountPath);
+
+    // Remove the saved checkbox selection for the deleted mod.
+    if (UAlpakitSettings* Settings = UAlpakitSettings::Get())
+    {
+        Settings->ModSelection.Remove(PluginName);
+        Settings->SaveSettings();
+    }
+
+    /*
+     * Remove the deleted descriptor from PluginManager's discovered list and
+     * refresh discovery. The content mount may remain alive until editor
+     * restart if assets from the mod were already loaded, but it will no
+     * longer exist on disk or in Alpakit's list.
+     */
+    FText RemovePluginFailReason;
+    if (!IPluginManager::Get().RemoveFromPluginsList(
+            DescriptorFileName,
+            &RemovePluginFailReason))
+    {
+        UE_LOG(
+            LogAlpakit,
+            Warning,
+            TEXT(
+                "Mod %s was deleted from disk, but PluginManager could not "
+                "remove its descriptor from the current in-memory list: %s"
+            ),
+            *PluginName,
+            *RemovePluginFailReason.ToString());
+    }
+
+    IPluginManager::Get().RefreshPluginsList();
+
+    UE_LOG(
+        LogAlpakit,
+        Display,
+        TEXT("Permanently deleted mod %s from %s"),
+        *PluginName,
+        *ModBaseDir);
+
+    /*
+     * Refresh the list after this Slate click handler returns, so this widget
+     * is not destroyed while one of its own member functions is executing.
+     */
+    TWeakPtr<SAlpakitModEntryList> WeakOwner = Owner;
+
+    AsyncTask(
+        ENamedThreads::GameThread,
+        [WeakOwner]()
+        {
+            if (TSharedPtr<SAlpakitModEntryList> PinnedOwner =
+                    WeakOwner.Pin())
+            {
+                PinnedOwner->LoadMods();
+            }
+        });
+
+    return FReply::Handled();
 }
 
 void SAlpakitModEntry::OnEnableCheckboxChanged(ECheckBoxState NewState) {

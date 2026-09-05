@@ -18,6 +18,15 @@ public:
      * and persist it before a separate UAT cook starts.
      */
     void EnsureAssetManagerRegistrationForPlugin(IPlugin& Plugin);
+
+    /**
+     * Remove all Asset Manager registration owned by a deleted mod.
+     * This removes /<ModName> from PrimaryAssetLabel Directories and removes
+     * Specific Assets that live under the mod's mount path.
+     */
+    void RemoveAssetManagerRegistrationForPlugin(
+        const FString& PluginName,
+        const FString& PluginMountPath);
     
     /** ID name for the mod creator tab */
     static const FName ModCreatorTabName;
