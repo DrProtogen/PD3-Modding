@@ -12,6 +12,7 @@ class SAlpakitModEntry : public SCompoundWidget {
     void Construct(const FArguments& Args, TSharedRef<IPlugin> InMod, TSharedRef<SAlpakitModEntryList> InOwner);
 
     void PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& NextEntries) const;
+    bool RunPreflightValidation() const;
     void OnEnableCheckboxChanged(ECheckBoxState NewState);
 
     void OnEditMod();

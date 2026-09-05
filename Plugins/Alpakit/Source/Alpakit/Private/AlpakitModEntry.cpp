@@ -17,11 +17,164 @@
 #include "Misc/PackageName.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Engine/AssetManagerSettings.h"
+#include "Misc/MessageDialog.h"
 
 #define LOCTEXT_NAMESPACE "AlpakitModListEntry"
 
 namespace
 {
+	enum class EAlpakitPreflightSeverity : uint8
+	{
+		Pass,
+		Warning,
+		Error
+	};
+
+	struct FAlpakitPreflightItem
+	{
+		EAlpakitPreflightSeverity Severity;
+		FString Message;
+	};
+
+	struct FAlpakitPreflightResult
+	{
+		TArray<FAlpakitPreflightItem> Items;
+		int32 PassCount = 0;
+		int32 WarningCount = 0;
+		int32 ErrorCount = 0;
+
+		void Add(
+			EAlpakitPreflightSeverity Severity,
+			const FString& Message)
+		{
+			Items.Add({ Severity, Message });
+
+			switch (Severity)
+			{
+			case EAlpakitPreflightSeverity::Pass:
+				++PassCount;
+				break;
+
+			case EAlpakitPreflightSeverity::Warning:
+				++WarningCount;
+				break;
+
+			case EAlpakitPreflightSeverity::Error:
+				++ErrorCount;
+				break;
+			}
+		}
+
+		void Pass(const FString& Message)
+		{
+			Add(EAlpakitPreflightSeverity::Pass, Message);
+		}
+
+		void Warning(const FString& Message)
+		{
+			Add(EAlpakitPreflightSeverity::Warning, Message);
+		}
+
+		void Error(const FString& Message)
+		{
+			Add(EAlpakitPreflightSeverity::Error, Message);
+		}
+
+		bool HasErrors() const
+		{
+			return ErrorCount > 0;
+		}
+
+		FString BuildReport(const FString& PluginName) const
+		{
+			FString Report = FString::Printf(
+				TEXT(
+					"Alpakit Preflight - %s\n\n"
+					"%d passed    %d warning(s)    %d error(s)\n"
+					"----------------------------------------\n"
+				),
+				*PluginName,
+				PassCount,
+				WarningCount,
+				ErrorCount);
+
+			for (const FAlpakitPreflightItem& Item : Items)
+			{
+				const TCHAR* Prefix = TEXT("[PASS]");
+
+				switch (Item.Severity)
+				{
+				case EAlpakitPreflightSeverity::Warning:
+					Prefix = TEXT("[WARN]");
+					break;
+
+				case EAlpakitPreflightSeverity::Error:
+					Prefix = TEXT("[ERROR]");
+					break;
+
+				default:
+					break;
+				}
+
+				Report += FString::Printf(
+					TEXT("%s %s\n"),
+					Prefix,
+					*Item.Message);
+			}
+
+			return Report;
+		}
+	};
+
+	bool DoesSoftReferencePackageExist(
+		const FSoftObjectPath& AssetPath)
+	{
+		if (AssetPath.IsNull())
+		{
+			return false;
+		}
+
+		const FString ObjectPath = AssetPath.ToString();
+		const FString PackageName =
+			FPackageName::ObjectPathToPackageName(ObjectPath);
+
+		return !PackageName.IsEmpty() &&
+			FPackageName::DoesPackageExist(PackageName);
+	}
+
+	bool IsPALRegisteredAsSpecificAsset(
+		const FPrimaryAssetTypeInfo& PrimaryAssetLabelType,
+		const FSoftObjectPath& PALObjectPath)
+	{
+		const TArray<FSoftObjectPath>& SpecificAssets =
+			PrimaryAssetLabelType.GetSpecificAssets();
+
+		return SpecificAssets.ContainsByPredicate(
+			[&PALObjectPath](const FSoftObjectPath& ExistingPath)
+			{
+				return ExistingPath.ToString().Equals(
+					PALObjectPath.ToString(),
+					ESearchCase::IgnoreCase);
+			});
+	}
+
+	bool IsMountRegisteredAsPALDirectory(
+		const FPrimaryAssetTypeInfo& PrimaryAssetLabelType,
+		const FString& PluginMountPath)
+	{
+		const TArray<FDirectoryPath>& Directories =
+			PrimaryAssetLabelType.GetDirectories();
+
+		return Directories.ContainsByPredicate(
+			[&PluginMountPath](const FDirectoryPath& Directory)
+			{
+				return Directory.Path.Equals(
+					PluginMountPath,
+					ESearchCase::IgnoreCase);
+			});
+	}
+
 	bool IsOutsidePluginMount(
 		const FSoftObjectPath& AssetPath,
 		const FString& PluginMountPath)
@@ -388,6 +541,431 @@ FText GetCurrentPlatformName() {
 #endif
 }
 
+bool SAlpakitModEntry::RunPreflightValidation() const
+{
+	if (!Mod.IsValid())
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			LOCTEXT(
+				"PreflightInvalidMod",
+				"Alpakit preflight failed because the mod entry is no longer valid."));
+
+		return false;
+	}
+
+	const FString PluginName = Mod->GetName();
+
+	FString PluginMountPath = Mod->GetMountedAssetPath();
+	PluginMountPath.RemoveFromEnd(TEXT("/"));
+
+	const FString PluginContentPath =
+		PluginMountPath + TEXT("/");
+
+	const FString PALPackagePath =
+		PluginContentPath +
+		FString::Printf(TEXT("PAL_%s"), *PluginName);
+
+	const FString PALObjectPathString =
+		PALPackagePath +
+		TEXT(".") +
+		FString::Printf(TEXT("PAL_%s"), *PluginName);
+
+	const FSoftObjectPath PALObjectPath(PALObjectPathString);
+
+	FAlpakitPreflightResult Result;
+
+	// ------------------------------------------------------------------
+	// Basic plugin/filesystem sanity.
+	// ------------------------------------------------------------------
+	if (IFileManager::Get().FileExists(*Mod->GetDescriptorFileName()))
+	{
+		Result.Pass(TEXT("Plugin descriptor exists."));
+	}
+	else
+	{
+		Result.Error(
+			FString::Printf(
+				TEXT("Plugin descriptor is missing: %s"),
+				*Mod->GetDescriptorFileName()));
+	}
+
+	if (IFileManager::Get().DirectoryExists(*Mod->GetContentDir()))
+	{
+		Result.Pass(TEXT("Plugin Content directory exists."));
+	}
+	else
+	{
+		Result.Error(
+			FString::Printf(
+				TEXT("Plugin Content directory is missing: %s"),
+				*Mod->GetContentDir()));
+	}
+
+	// ------------------------------------------------------------------
+	// PDML dependency.
+	// ------------------------------------------------------------------
+	if (PluginName.Equals(TEXT("PDML"), ESearchCase::IgnoreCase))
+	{
+		Result.Pass(TEXT("PDML is the framework plugin; self-dependency is not required."));
+	}
+	else
+	{
+		const FPluginReferenceDescriptor* PDMLDependency =
+			Mod->GetDescriptor().Plugins.FindByPredicate(
+				[](const FPluginReferenceDescriptor& Reference)
+				{
+					return Reference.Name.Equals(
+						TEXT("PDML"),
+						ESearchCase::IgnoreCase);
+				});
+
+		if (PDMLDependency && PDMLDependency->bEnabled)
+		{
+			Result.Pass(TEXT("PDML dependency is present and enabled."));
+		}
+		else
+		{
+			Result.Error(
+				TEXT(
+					"PDML dependency is missing or disabled in the mod's .uplugin."));
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Asset Registry scan of the mod.
+	// ------------------------------------------------------------------
+	FAssetRegistryModule& AssetRegistryModule =
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+			TEXT("AssetRegistry"));
+
+	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+	TArray<FString> PathsToScan;
+	PathsToScan.Add(PluginMountPath);
+	AssetRegistry.ScanPathsSynchronous(PathsToScan, true);
+
+	TArray<FAssetData> ModAssets;
+	AssetRegistry.GetAssetsByPath(
+		FName(*PluginMountPath),
+		ModAssets,
+		true);
+
+	if (ModAssets.Num() > 0)
+	{
+		Result.Pass(
+			FString::Printf(
+				TEXT("Asset Registry found %d asset(s) under %s."),
+				ModAssets.Num(),
+				*PluginMountPath));
+	}
+	else
+	{
+		Result.Warning(
+			FString::Printf(
+				TEXT("Asset Registry found no assets under %s."),
+				*PluginMountPath));
+	}
+
+	// Detect template leftovers in both asset names and package dependencies.
+	TSet<FName> MissingDependencyPackages;
+	TSet<FName> PlaceholderDependencyPackages;
+
+	for (const FAssetData& AssetData : ModAssets)
+	{
+		const FString AssetName = AssetData.AssetName.ToString();
+
+		if (AssetName.Contains(
+				TEXT("PLACEHOLDER_"),
+				ESearchCase::IgnoreCase))
+		{
+			Result.Error(
+				FString::Printf(
+					TEXT("Template placeholder asset was not renamed: %s"),
+					*AssetData.GetObjectPathString()));
+		}
+
+		const FString PackageName = AssetData.PackageName.ToString();
+
+		if (!FPackageName::DoesPackageExist(PackageName))
+		{
+			Result.Error(
+				FString::Printf(
+					TEXT("Registered mod package is missing on disk: %s"),
+					*PackageName));
+		}
+
+		TArray<FName> Dependencies;
+		AssetRegistry.GetDependencies(
+			AssetData.PackageName,
+			Dependencies,
+			UE::AssetRegistry::EDependencyCategory::Package);
+
+		for (const FName DependencyName : Dependencies)
+		{
+			const FString DependencyString =
+				DependencyName.ToString();
+
+			if (DependencyString.Contains(
+					TEXT("PLACEHOLDER_"),
+					ESearchCase::IgnoreCase))
+			{
+				PlaceholderDependencyPackages.Add(
+					DependencyName);
+			}
+		}
+	}
+
+	if (PlaceholderDependencyPackages.Num() == 0)
+	{
+		Result.Pass(TEXT("No stale PLACEHOLDER_* package references were found."));
+	}
+	else
+	{
+		for (const FName DependencyName : PlaceholderDependencyPackages)
+		{
+			Result.Error(
+				FString::Printf(
+					TEXT("Stale template dependency found: %s"),
+					*DependencyName.ToString()));
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// PAL.
+	// ------------------------------------------------------------------
+	UPrimaryAssetLabel* Label =
+		Cast<UPrimaryAssetLabel>(
+			UEditorAssetLibrary::LoadAsset(PALPackagePath));
+
+	if (!Label)
+	{
+		Result.Error(
+			FString::Printf(
+				TEXT("Required Primary Asset Label is missing: %s"),
+				*PALPackagePath));
+	}
+	else
+	{
+		Result.Pass(
+			FString::Printf(
+				TEXT("Primary Asset Label found: %s"),
+				*PALPackagePath));
+
+		if (Label->bIsRuntimeLabel)
+		{
+			Result.Pass(TEXT("PAL is marked as a runtime label."));
+		}
+		else
+		{
+			Result.Warning(TEXT("PAL is not marked as a runtime label."));
+		}
+
+		int32 ExternalAssetCount = 0;
+		int32 ExternalBlueprintCount = 0;
+		int32 MissingExplicitReferenceCount = 0;
+
+		for (const TSoftObjectPtr<UObject>& ExplicitAsset :
+			Label->ExplicitAssets)
+		{
+			const FSoftObjectPath AssetPath =
+				ExplicitAsset.ToSoftObjectPath();
+
+			if (AssetPath.IsNull())
+			{
+				Result.Warning(TEXT("PAL contains an empty Explicit Asset entry."));
+				continue;
+			}
+
+			if (!DoesSoftReferencePackageExist(AssetPath))
+			{
+				++MissingExplicitReferenceCount;
+
+				Result.Error(
+					FString::Printf(
+						TEXT("PAL Explicit Asset package does not exist: %s"),
+						*AssetPath.ToString()));
+			}
+
+			if (IsOutsidePluginMount(
+					AssetPath,
+					PluginContentPath))
+			{
+				++ExternalAssetCount;
+			}
+		}
+
+		for (const TSoftClassPtr<UObject>& ExplicitBlueprint :
+			Label->ExplicitBlueprints)
+		{
+			const FSoftObjectPath AssetPath =
+				ExplicitBlueprint.ToSoftObjectPath();
+
+			if (AssetPath.IsNull())
+			{
+				Result.Warning(TEXT("PAL contains an empty Explicit Blueprint entry."));
+				continue;
+			}
+
+			if (!DoesSoftReferencePackageExist(AssetPath))
+			{
+				++MissingExplicitReferenceCount;
+
+				Result.Error(
+					FString::Printf(
+						TEXT("PAL Explicit Blueprint package does not exist: %s"),
+						*AssetPath.ToString()));
+			}
+
+			if (IsOutsidePluginMount(
+					AssetPath,
+					PluginContentPath))
+			{
+				++ExternalBlueprintCount;
+			}
+		}
+
+		if (MissingExplicitReferenceCount == 0)
+		{
+			Result.Pass(TEXT("All PAL explicit references resolve to packages on disk."));
+		}
+
+		const int32 TotalExternalReferences =
+			ExternalAssetCount + ExternalBlueprintCount;
+
+		if (TotalExternalReferences > 0)
+		{
+			Result.Pass(
+				FString::Printf(
+					TEXT(
+						"Detected %d external replacement reference(s) "
+						"(%d asset(s), %d blueprint(s)); two-stage packaging is required."
+					),
+					TotalExternalReferences,
+					ExternalAssetCount,
+					ExternalBlueprintCount));
+
+			if (Label->Rules.ChunkId >= 0)
+			{
+				Result.Pass(
+					FString::Printf(
+						TEXT("PAL has valid Chunk ID %d."),
+						Label->Rules.ChunkId));
+			}
+			else
+			{
+				Result.Error(
+					TEXT(
+						"PAL manages external content but its Chunk ID is invalid (< 0)."));
+			}
+		}
+		else
+		{
+			Result.Pass(
+				TEXT(
+					"No external /Game-style replacement references were detected; "
+					"single-stage plugin packaging is sufficient."));
+
+			if (Label->Rules.ChunkId < 0)
+			{
+				Result.Warning(
+					TEXT(
+						"PAL Chunk ID is unset. This is fine for plugin-only content, "
+						"but external replacement assets would require a valid Chunk ID."));
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Asset Manager registration.
+	// ------------------------------------------------------------------
+	const UAssetManagerSettings* AssetManagerSettings =
+		GetDefault<UAssetManagerSettings>();
+
+	const FPrimaryAssetTypeInfo* PrimaryAssetLabelType =
+		AssetManagerSettings
+			? AssetManagerSettings->PrimaryAssetTypesToScan.FindByPredicate(
+				[](const FPrimaryAssetTypeInfo& TypeInfo)
+				{
+					return TypeInfo.PrimaryAssetType ==
+						FName(TEXT("PrimaryAssetLabel"));
+				})
+			: nullptr;
+
+	if (!PrimaryAssetLabelType)
+	{
+		Result.Error(
+			TEXT(
+				"Asset Manager has no PrimaryAssetLabel entry in Primary Asset Types to Scan."));
+	}
+	else
+	{
+		if (IsMountRegisteredAsPALDirectory(
+				*PrimaryAssetLabelType,
+				PluginMountPath))
+		{
+			Result.Pass(
+				FString::Printf(
+					TEXT("Asset Manager Directories contains %s."),
+					*PluginMountPath));
+		}
+		else
+		{
+			Result.Error(
+				FString::Printf(
+					TEXT("Asset Manager Directories is missing %s."),
+					*PluginMountPath));
+		}
+
+		if (IsPALRegisteredAsSpecificAsset(
+				*PrimaryAssetLabelType,
+				PALObjectPath))
+		{
+			Result.Pass(TEXT("PAL is registered as an Asset Manager Specific Asset."));
+		}
+		else
+		{
+			Result.Warning(
+				TEXT(
+					"PAL is not listed as an Asset Manager Specific Asset. "
+					"The directory scan can still discover it, but Alpakit normally registers both."));
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Present results and decide whether packaging may continue.
+	// ------------------------------------------------------------------
+	FString Report = Result.BuildReport(PluginName);
+
+	UE_LOG(
+		LogAlpakit,
+		Display,
+		TEXT("%s"),
+		*Report);
+
+	if (Result.HasErrors())
+	{
+		Report +=
+			TEXT(
+				"\nPackaging has been blocked. Fix the error(s) above and run Alpakit again.");
+
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			FText::FromString(Report));
+
+		return false;
+	}
+
+	Report +=
+		TEXT(
+			"\nPreflight passed with no blocking errors.\n\nContinue packaging?");
+
+	return FMessageDialog::Open(
+		EAppMsgType::YesNo,
+		FText::FromString(Report)) == EAppReturnType::Yes;
+}
+
+
 void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& NextEntries) const {
     UAlpakitSettings* Settings = UAlpakitSettings::Get();
     const FString PluginName = Mod->GetName();
@@ -419,6 +997,21 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
         FModuleManager::LoadModuleChecked<FAlpakitModule>(TEXT("Alpakit"));
 
     AlpakitModule.EnsureAssetManagerRegistrationForPlugin(*Mod);
+
+    /*
+     * Validate the mod after Alpakit's automatic Asset Manager repair but
+     * before deciding on PASS 2 or launching UAT.
+     */
+    if (!RunPreflightValidation())
+    {
+        UE_LOG(
+            LogAlpakit,
+            Warning,
+            TEXT("Packaging cancelled by preflight for mod %s."),
+            *PluginName);
+
+        return;
+    }
 
     // Only request PASS 2 when the PAL explicitly manages content outside
     // the plugin mount. Mods containing only plugin assets stay on the fast
