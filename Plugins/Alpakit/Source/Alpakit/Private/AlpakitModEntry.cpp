@@ -19,6 +19,8 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/AssetManagerSettings.h"
 #include "Misc/MessageDialog.h"
+#include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SSeparator.h"
 
 #define LOCTEXT_NAMESPACE "AlpakitModListEntry"
 
@@ -192,6 +194,400 @@ namespace
 		);
 	}
 
+	struct FAlpakitPALInspectionData
+	{
+		FString PluginName;
+		FString PluginMountPath;
+		FString PALPackagePath;
+		FString PALObjectPath;
+
+		bool bPALFound = false;
+		bool bRuntimeLabel = false;
+		bool bLabelAssetsInMyDirectory = false;
+		bool bTwoStagePackaging = false;
+		bool bAssetManagerDirectoryRegistered = false;
+		bool bPALSpecificAssetRegistered = false;
+
+		int32 ChunkId = INDEX_NONE;
+
+		TArray<FString> PluginAssets;
+		TArray<FString> ExplicitInternalAssets;
+		TArray<FString> ExplicitInternalBlueprints;
+		TArray<FString> ExternalAssets;
+		TArray<FString> ExternalBlueprints;
+		TArray<FString> ExternalGameAssets;
+		TArray<FString> ManagedChunkCandidates;
+		TArray<FString> MissingExplicitReferences;
+	};
+
+	void AddUniqueInspectionPath(
+		TArray<FString>& Paths,
+		const FString& Path)
+	{
+		if (!Path.IsEmpty())
+		{
+			Paths.AddUnique(Path);
+		}
+	}
+
+	void SortInspectionPaths(
+		FAlpakitPALInspectionData& Data)
+	{
+		Data.PluginAssets.Sort();
+		Data.ExplicitInternalAssets.Sort();
+		Data.ExplicitInternalBlueprints.Sort();
+		Data.ExternalAssets.Sort();
+		Data.ExternalBlueprints.Sort();
+		Data.ExternalGameAssets.Sort();
+		Data.ManagedChunkCandidates.Sort();
+		Data.MissingExplicitReferences.Sort();
+	}
+
+	FAlpakitPALInspectionData BuildPALInspectionData(
+		const IPlugin& Plugin)
+	{
+		FAlpakitPALInspectionData Data;
+		Data.PluginName = Plugin.GetName();
+
+		Data.PluginMountPath =
+			Plugin.GetMountedAssetPath();
+		Data.PluginMountPath.RemoveFromEnd(TEXT("/"));
+
+		const FString PluginContentPath =
+			Data.PluginMountPath + TEXT("/");
+
+		Data.PALPackagePath =
+			PluginContentPath +
+			FString::Printf(
+				TEXT("PAL_%s"),
+				*Data.PluginName);
+
+		Data.PALObjectPath =
+			Data.PALPackagePath +
+			TEXT(".") +
+			FString::Printf(
+				TEXT("PAL_%s"),
+				*Data.PluginName);
+
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+				TEXT("AssetRegistry"));
+
+		IAssetRegistry& AssetRegistry =
+			AssetRegistryModule.Get();
+
+		TArray<FString> PathsToScan;
+		PathsToScan.Add(Data.PluginMountPath);
+
+		AssetRegistry.ScanPathsSynchronous(
+			PathsToScan,
+			true);
+
+		TArray<FAssetData> ModAssets;
+
+		AssetRegistry.GetAssetsByPath(
+			FName(*Data.PluginMountPath),
+			ModAssets,
+			true);
+
+		for (const FAssetData& AssetData : ModAssets)
+		{
+			AddUniqueInspectionPath(
+				Data.PluginAssets,
+				AssetData.GetObjectPathString());
+		}
+
+		UPrimaryAssetLabel* Label =
+			Cast<UPrimaryAssetLabel>(
+				UEditorAssetLibrary::LoadAsset(
+					Data.PALPackagePath));
+
+		if (Label)
+		{
+			Data.bPALFound = true;
+			Data.bRuntimeLabel =
+				Label->bIsRuntimeLabel;
+			Data.bLabelAssetsInMyDirectory =
+				Label->bLabelAssetsInMyDirectory;
+			Data.ChunkId =
+				Label->Rules.ChunkId;
+
+			if (Data.bLabelAssetsInMyDirectory)
+			{
+				for (const FString& PluginAsset :
+					Data.PluginAssets)
+				{
+					AddUniqueInspectionPath(
+						Data.ManagedChunkCandidates,
+						PluginAsset);
+				}
+			}
+
+			for (const TSoftObjectPtr<UObject>& ExplicitAsset :
+				Label->ExplicitAssets)
+			{
+				const FSoftObjectPath AssetPath =
+					ExplicitAsset.ToSoftObjectPath();
+
+				if (AssetPath.IsNull())
+				{
+					continue;
+				}
+
+				const FString PathString =
+					AssetPath.ToString();
+
+				AddUniqueInspectionPath(
+					Data.ManagedChunkCandidates,
+					PathString);
+
+				if (!DoesSoftReferencePackageExist(AssetPath))
+				{
+					AddUniqueInspectionPath(
+						Data.MissingExplicitReferences,
+						PathString);
+				}
+
+				if (IsOutsidePluginMount(
+						AssetPath,
+						PluginContentPath))
+				{
+					AddUniqueInspectionPath(
+						Data.ExternalAssets,
+						PathString);
+
+					if (PathString.StartsWith(
+							TEXT("/Game/"),
+							ESearchCase::IgnoreCase))
+					{
+						AddUniqueInspectionPath(
+							Data.ExternalGameAssets,
+							PathString);
+					}
+				}
+				else
+				{
+					AddUniqueInspectionPath(
+						Data.ExplicitInternalAssets,
+						PathString);
+				}
+			}
+
+			for (const TSoftClassPtr<UObject>& ExplicitBlueprint :
+				Label->ExplicitBlueprints)
+			{
+				const FSoftObjectPath AssetPath =
+					ExplicitBlueprint.ToSoftObjectPath();
+
+				if (AssetPath.IsNull())
+				{
+					continue;
+				}
+
+				const FString PathString =
+					AssetPath.ToString();
+
+				AddUniqueInspectionPath(
+					Data.ManagedChunkCandidates,
+					PathString);
+
+				if (!DoesSoftReferencePackageExist(AssetPath))
+				{
+					AddUniqueInspectionPath(
+						Data.MissingExplicitReferences,
+						PathString);
+				}
+
+				if (IsOutsidePluginMount(
+						AssetPath,
+						PluginContentPath))
+				{
+					AddUniqueInspectionPath(
+						Data.ExternalBlueprints,
+						PathString);
+
+					if (PathString.StartsWith(
+							TEXT("/Game/"),
+							ESearchCase::IgnoreCase))
+					{
+						AddUniqueInspectionPath(
+							Data.ExternalGameAssets,
+							PathString);
+					}
+				}
+				else
+				{
+					AddUniqueInspectionPath(
+						Data.ExplicitInternalBlueprints,
+						PathString);
+				}
+			}
+
+			Data.bTwoStagePackaging =
+				Data.ExternalAssets.Num() > 0 ||
+				Data.ExternalBlueprints.Num() > 0;
+		}
+
+		const UAssetManagerSettings* AssetManagerSettings =
+			GetDefault<UAssetManagerSettings>();
+
+		const FPrimaryAssetTypeInfo* PrimaryAssetLabelType =
+			AssetManagerSettings
+				? AssetManagerSettings
+					->PrimaryAssetTypesToScan
+					.FindByPredicate(
+						[](const FPrimaryAssetTypeInfo& TypeInfo)
+						{
+							return TypeInfo.PrimaryAssetType ==
+								FName(TEXT("PrimaryAssetLabel"));
+						})
+				: nullptr;
+
+		if (PrimaryAssetLabelType)
+		{
+			Data.bAssetManagerDirectoryRegistered =
+				IsMountRegisteredAsPALDirectory(
+					*PrimaryAssetLabelType,
+					Data.PluginMountPath);
+
+			Data.bPALSpecificAssetRegistered =
+				IsPALRegisteredAsSpecificAsset(
+					*PrimaryAssetLabelType,
+					FSoftObjectPath(Data.PALObjectPath));
+		}
+
+		SortInspectionPaths(Data);
+		return Data;
+	}
+
+	FString BuildPALAssetReport(
+		const FAlpakitPALInspectionData& Data)
+	{
+		const FString ChunkText =
+			Data.ChunkId >= 0
+				? FString::FromInt(Data.ChunkId)
+				: TEXT("Unset");
+
+		FString Report = FString::Printf(
+			TEXT(
+				"PAL / Chunk Inspector - %s\n\n"
+				"PAL: %s\n"
+				"Chunk ID: %s\n"
+				"Packaging mode: %s\n"
+				"Plugin assets: %d\n"
+				"PAL chunk candidates: %d\n"
+				"External references: %d\n"
+				"External /Game references: %d\n\n"
+			),
+			*Data.PluginName,
+			*Data.PALPackagePath,
+			*ChunkText,
+			Data.bTwoStagePackaging
+				? TEXT("Two-stage")
+				: TEXT("Single-stage"),
+			Data.PluginAssets.Num(),
+			Data.ManagedChunkCandidates.Num(),
+			Data.ExternalAssets.Num() +
+				Data.ExternalBlueprints.Num(),
+			Data.ExternalGameAssets.Num());
+
+		if (!Data.bPALFound)
+		{
+			Report +=
+				TEXT(
+					"PAL was not found. There are no PAL-managed assets to display.\n");
+
+			return Report;
+		}
+
+		Report +=
+			TEXT(
+				"PAL-MANAGED CHUNK CANDIDATES\n"
+				"----------------------------------------\n");
+
+		if (Data.ManagedChunkCandidates.Num() == 0)
+		{
+			Report += TEXT("(none)\n");
+		}
+		else
+		{
+			for (const FString& AssetPath :
+				Data.ManagedChunkCandidates)
+			{
+				Report += FString::Printf(
+					TEXT("%s\n"),
+					*AssetPath);
+			}
+		}
+
+		Report +=
+			TEXT(
+				"\nEXTERNAL REFERENCES\n"
+				"----------------------------------------\n");
+
+		if (Data.ExternalAssets.Num() == 0 &&
+			Data.ExternalBlueprints.Num() == 0)
+		{
+			Report += TEXT("(none)\n");
+		}
+		else
+		{
+			for (const FString& AssetPath :
+				Data.ExternalAssets)
+			{
+				Report += FString::Printf(
+					TEXT("[Asset] %s\n"),
+					*AssetPath);
+			}
+
+			for (const FString& AssetPath :
+				Data.ExternalBlueprints)
+			{
+				Report += FString::Printf(
+					TEXT("[Blueprint] %s\n"),
+					*AssetPath);
+			}
+		}
+
+		Report +=
+			TEXT(
+				"\nALL ASSETS UNDER MOD MOUNT\n"
+				"----------------------------------------\n");
+
+		if (Data.PluginAssets.Num() == 0)
+		{
+			Report += TEXT("(none)\n");
+		}
+		else
+		{
+			for (const FString& AssetPath :
+				Data.PluginAssets)
+			{
+				Report += FString::Printf(
+					TEXT("%s\n"),
+					*AssetPath);
+			}
+		}
+
+		if (Data.MissingExplicitReferences.Num() > 0)
+		{
+			Report +=
+				TEXT(
+					"\nMISSING EXPLICIT REFERENCES\n"
+					"----------------------------------------\n");
+
+			for (const FString& AssetPath :
+				Data.MissingExplicitReferences)
+			{
+				Report += FString::Printf(
+					TEXT("%s\n"),
+					*AssetPath);
+			}
+		}
+
+		return Report;
+	}
+
 	int32 GetModChunkIdIfExternalContentExists(const IPlugin& Plugin)
 	{
 		FString PluginMountPath = Plugin.GetMountedAssetPath();
@@ -329,104 +725,461 @@ namespace
 }
 
 
-void SAlpakitModEntry::Construct(const FArguments& Args, TSharedRef<IPlugin> InMod, TSharedRef<SAlpakitModEntryList> InOwner) {
-    Mod = InMod;
+void SAlpakitModEntry::Construct(
+	const FArguments& Args,
+	TSharedRef<IPlugin> InMod,
+	TSharedRef<SAlpakitModEntryList> InOwner)
+{
+	Mod = InMod;
 	Owner = InOwner;
 
-    UAlpakitSettings* Settings = UAlpakitSettings::Get();
-    const FString PluginName = Mod->GetName();
+	UAlpakitSettings* Settings =
+		UAlpakitSettings::Get();
 
-    Checkbox = SNew(SCheckBox)
-        .OnCheckStateChanged(this, &SAlpakitModEntry::OnEnableCheckboxChanged)
-        .IsChecked(Settings->ModSelection.FindOrAdd(PluginName, false));
+	const FString PluginName =
+		Mod->GetName();
 
-    ChildSlot[
-        SNew(SHorizontalBox)
-        + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 5, 0).VAlign(VAlign_Center)[
-            Checkbox.ToSharedRef()
-        ]
-        + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 5, 0).VAlign(VAlign_Center)[
-            SNew(SButton)
-            .Text(LOCTEXT("PackageModAlpakit", "Alpakit!"))
-            .OnClicked_Lambda([this](){
-                PackageMod(TArray<TSharedPtr<SAlpakitModEntry>>());
-                return FReply::Handled();
-            })
-            .ToolTipText_Lambda([this](){
-                return FText::FromString(FString::Printf(TEXT("Alpakit %s"), *this->Mod->GetName()));
-            })
-        ]
-        + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 5, 0).VAlign(VAlign_Center)[
-            SNew(SButton)
-            .Text(LOCTEXT("EditModAlpakit", "Edit"))
-            .OnClicked_Lambda([this](){
-				this->OnEditMod();
-                return FReply::Handled();
-            })
-            .ToolTipText_Lambda([this](){
-                return FText::FromString(FString::Printf(TEXT("Edit %s"), *this->Mod->GetName()));
-            })
-        ]
-        + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 5, 0).VAlign(VAlign_Center)[
-            SNew(SButton)
-            .Text(LOCTEXT("DeleteModAlpakit", "Delete"))
-            .OnClicked(this, &SAlpakitModEntry::OnDeleteMod)
-            .Visibility_Lambda([this]()
-            {
-                if (!Mod.IsValid())
-                {
-                    return EVisibility::Collapsed;
-                }
+	Checkbox =
+		SNew(SCheckBox)
+		.OnCheckStateChanged(
+			this,
+			&SAlpakitModEntry::OnEnableCheckboxChanged)
+		.IsChecked(
+			Settings->ModSelection.FindOrAdd(
+				PluginName,
+				false));
 
-                FString ModBaseDir =
-                    FPaths::ConvertRelativePathToFull(Mod->GetBaseDir());
+	ChildSlot
+	[
+		SNew(SVerticalBox)
 
-                FString ProjectModsDir =
-                    FPaths::ConvertRelativePathToFull(
-                        FPaths::Combine(
-                            FPaths::ProjectDir(),
-                            TEXT("Mods")));
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SHorizontalBox)
 
-                FPaths::NormalizeDirectoryName(ModBaseDir);
-                FPaths::NormalizeDirectoryName(ProjectModsDir);
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0, 0, 5, 0)
+			.VAlign(VAlign_Center)
+			[
+				Checkbox.ToSharedRef()
+			]
 
-                const FString ProjectModsPrefix =
-                    ProjectModsDir.EndsWith(TEXT("/"))
-                        ? ProjectModsDir
-                        : ProjectModsDir + TEXT("/");
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0, 0, 5, 0)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(
+					LOCTEXT(
+						"PackageModAlpakit",
+						"Alpakit!"))
+				.OnClicked_Lambda(
+					[this]()
+					{
+						PackageMod(
+							TArray<
+								TSharedPtr<
+									SAlpakitModEntry>>());
 
-                const bool bIsInsideProjectMods =
-                    ModBaseDir.StartsWith(
-                        ProjectModsPrefix,
-                        ESearchCase::IgnoreCase) &&
-                    ModBaseDir.Len() > ProjectModsPrefix.Len();
+						return FReply::Handled();
+					})
+				.ToolTipText_Lambda(
+					[this]()
+					{
+						return FText::FromString(
+							FString::Printf(
+								TEXT("Alpakit %s"),
+								*this->Mod->GetName()));
+					})
+			]
 
-                return bIsInsideProjectMods
-                    ? EVisibility::Visible
-                    : EVisibility::Collapsed;
-            })
-            .ToolTipText_Lambda([this]()
-            {
-                return Mod.IsValid()
-                    ? FText::FromString(
-                        FString::Printf(
-                            TEXT("Permanently delete %s"),
-                            *Mod->GetName()))
-                    : FText::GetEmpty();
-            })
-        ]
-        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[
-            SNew(STextBlock)
-            .Text_Lambda([InMod]() {
-                const FString DisplayText = FString::Printf(TEXT("%s (%s)"), *InMod->GetDescriptor().FriendlyName, *InMod->GetName());
-                return FText::FromString(DisplayText);
-            })
-            .HighlightText_Lambda([InOwner]() {
-                return FText::FromString(InOwner->GetLastFilter());
-            })
-        ]
-    ];
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0, 0, 5, 0)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(
+					LOCTEXT(
+						"EditModAlpakit",
+						"Edit"))
+				.OnClicked_Lambda(
+					[this]()
+					{
+						this->OnEditMod();
+						return FReply::Handled();
+					})
+				.ToolTipText_Lambda(
+					[this]()
+					{
+						return FText::FromString(
+							FString::Printf(
+								TEXT("Edit %s"),
+								*this->Mod->GetName()));
+					})
+			]
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0, 0, 5, 0)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(
+					this,
+					&SAlpakitModEntry::GetPALInspectorButtonText)
+				.OnClicked(
+					this,
+					&SAlpakitModEntry::OnTogglePALInspector)
+				.ToolTipText(
+					LOCTEXT(
+						"PALInspectorTooltip",
+						"Show PAL, chunk, packaging mode, and managed asset information"))
+			]
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0, 0, 5, 0)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(
+					LOCTEXT(
+						"DeleteModAlpakit",
+						"Delete"))
+				.OnClicked(
+					this,
+					&SAlpakitModEntry::OnDeleteMod)
+				.Visibility_Lambda(
+					[this]()
+					{
+						if (!Mod.IsValid())
+						{
+							return
+								EVisibility::Collapsed;
+						}
+
+						FString ModBaseDir =
+							FPaths::ConvertRelativePathToFull(
+								Mod->GetBaseDir());
+
+						FString ProjectModsDir =
+							FPaths::ConvertRelativePathToFull(
+								FPaths::Combine(
+									FPaths::ProjectDir(),
+									TEXT("Mods")));
+
+						FPaths::NormalizeDirectoryName(
+							ModBaseDir);
+
+						FPaths::NormalizeDirectoryName(
+							ProjectModsDir);
+
+						const FString ProjectModsPrefix =
+							ProjectModsDir.EndsWith(
+								TEXT("/"))
+								? ProjectModsDir
+								: ProjectModsDir +
+									TEXT("/");
+
+						const bool bIsInsideProjectMods =
+							ModBaseDir.StartsWith(
+								ProjectModsPrefix,
+								ESearchCase::IgnoreCase) &&
+							ModBaseDir.Len() >
+								ProjectModsPrefix.Len();
+
+						return bIsInsideProjectMods
+							? EVisibility::Visible
+							: EVisibility::Collapsed;
+					})
+				.ToolTipText_Lambda(
+					[this]()
+					{
+						return Mod.IsValid()
+							? FText::FromString(
+								FString::Printf(
+									TEXT(
+										"Permanently delete %s"),
+									*Mod->GetName()))
+							: FText::GetEmpty();
+					})
+			]
+
+			+ SHorizontalBox::Slot()
+			.FillWidth(1)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+					.Text_Lambda(
+						[InMod]()
+						{
+							const FString DisplayText =
+								FString::Printf(
+									TEXT("%s (%s)"),
+									*InMod->GetDescriptor()
+										.FriendlyName,
+									*InMod->GetName());
+
+							return
+								FText::FromString(
+									DisplayText);
+						})
+					.HighlightText_Lambda(
+						[InOwner]()
+						{
+							return
+								FText::FromString(
+									InOwner
+										->GetLastFilter());
+						})
+			]
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(26.0f, 3.0f, 0.0f, 5.0f)
+		[
+			SNew(SBorder)
+				.Padding(FMargin(8.0f, 6.0f))
+				.Visibility(
+					this,
+					&SAlpakitModEntry::GetPALInspectorVisibility)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					.VAlign(VAlign_Top)
+					[
+						SNew(STextBlock)
+							.Text(
+								this,
+								&SAlpakitModEntry::GetPALInspectorSummaryText)
+							.AutoWrapText(true)
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+					.VAlign(VAlign_Top)
+					[
+						SNew(SButton)
+							.Text(
+								LOCTEXT(
+									"PALInspectorRefresh",
+									"Refresh"))
+							.OnClicked(
+								this,
+								&SAlpakitModEntry::OnRefreshPALInspector)
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(5.0f, 0.0f, 0.0f, 0.0f)
+					.VAlign(VAlign_Top)
+					[
+						SNew(SButton)
+							.Text(
+								LOCTEXT(
+									"PALInspectorViewAssets",
+									"View Assets"))
+							.OnClicked(
+								this,
+								&SAlpakitModEntry::OnViewPALAssets)
+					]
+				]
+		]
+	];
 }
+
+FReply SAlpakitModEntry::OnTogglePALInspector()
+{
+	bPALInspectorExpanded =
+		!bPALInspectorExpanded;
+
+	if (bPALInspectorExpanded)
+	{
+		OnRefreshPALInspector();
+	}
+
+	return FReply::Handled();
+}
+
+FText SAlpakitModEntry::GetPALInspectorButtonText() const
+{
+	return bPALInspectorExpanded
+		? LOCTEXT(
+			"PALInspectorCollapse",
+			"PAL <")
+		: LOCTEXT(
+			"PALInspectorExpand",
+			"PAL >");
+}
+
+EVisibility SAlpakitModEntry::GetPALInspectorVisibility() const
+{
+	return bPALInspectorExpanded
+		? EVisibility::Visible
+		: EVisibility::Collapsed;
+}
+
+FText SAlpakitModEntry::GetPALInspectorSummaryText() const
+{
+	if (!Mod.IsValid())
+	{
+		return LOCTEXT(
+			"PALInspectorInvalidMod",
+			"Mod is no longer valid.");
+	}
+
+	if (PALInspectorSummary.IsEmpty())
+	{
+		return LOCTEXT(
+			"PALInspectorNotLoaded",
+			"PAL inspector data has not been loaded yet.");
+	}
+
+	return PALInspectorSummary;
+}
+
+FReply SAlpakitModEntry::OnRefreshPALInspector()
+{
+	if (!Mod.IsValid())
+	{
+		PALInspectorSummary =
+			LOCTEXT(
+				"PALInspectorInvalidModRefresh",
+				"Mod is no longer valid.");
+
+		return FReply::Handled();
+	}
+
+	const FAlpakitPALInspectionData Data =
+		BuildPALInspectionData(*Mod);
+
+	if (!Data.bPALFound)
+	{
+		PALInspectorSummary =
+			FText::FromString(
+				FString::Printf(
+					TEXT(
+						"PAL: MISSING (%s)\n"
+						"Plugin assets: %d\n"
+						"Packaging: Single-stage fallback"
+					),
+					*Data.PALPackagePath,
+					Data.PluginAssets.Num()));
+
+		return FReply::Handled();
+	}
+
+	const int32 ExternalReferenceCount =
+		Data.ExternalAssets.Num() +
+		Data.ExternalBlueprints.Num();
+
+	const FString ChunkText =
+		Data.ChunkId >= 0
+			? FString::FromInt(Data.ChunkId)
+			: TEXT("Unset");
+
+	const FString PackagingText =
+		Data.bTwoStagePackaging
+			? TEXT("Two-stage")
+			: TEXT("Single-stage");
+
+	const FString AssetManagerText =
+		FString::Printf(
+			TEXT(
+				"Directory: %s | Specific PAL: %s"
+			),
+			Data.bAssetManagerDirectoryRegistered
+				? TEXT("Registered")
+				: TEXT("Missing"),
+			Data.bPALSpecificAssetRegistered
+				? TEXT("Registered")
+				: TEXT("Missing"));
+
+	PALInspectorSummary =
+		FText::FromString(
+			FString::Printf(
+				TEXT(
+					"PAL: %s\n"
+					"Chunk: %s | Packaging: %s | Runtime Label: %s\n"
+					"Plugin assets: %d | PAL chunk candidates: %d\n"
+					"External refs: %d | /Game replacements: %d\n"
+					"Asset Manager: %s"
+				),
+				*Data.PALPackagePath,
+				*ChunkText,
+				*PackagingText,
+				Data.bRuntimeLabel
+					? TEXT("Yes")
+					: TEXT("No"),
+				Data.PluginAssets.Num(),
+				Data.ManagedChunkCandidates.Num(),
+				ExternalReferenceCount,
+				Data.ExternalGameAssets.Num(),
+				*AssetManagerText));
+
+	return FReply::Handled();
+}
+
+FReply SAlpakitModEntry::OnViewPALAssets()
+{
+	if (!Mod.IsValid())
+	{
+		return FReply::Handled();
+	}
+
+	const FAlpakitPALInspectionData Data =
+		BuildPALInspectionData(*Mod);
+
+	const FString AssetReport =
+		BuildPALAssetReport(Data);
+
+	TSharedRef<SWindow> AssetsWindow =
+		SNew(SWindow)
+			.Title(
+				FText::FromString(
+					FString::Printf(
+						TEXT(
+							"%s - PAL / Chunk Assets"),
+						*Mod->GetName())))
+			.ClientSize(
+				FVector2D(
+					850.0f,
+					650.0f))
+			.SupportsMaximize(true)
+			.SupportsMinimize(false)
+			[
+				SNew(SBorder)
+					.Padding(
+						FMargin(
+							8.0f))
+					[
+						SNew(SScrollBox)
+
+						+ SScrollBox::Slot()
+						[
+							SNew(STextBlock)
+								.Text(
+									FText::FromString(
+										AssetReport))
+								.AutoWrapText(false)
+						]
+					]
+			];
+
+	FSlateApplication::Get().AddWindow(
+		AssetsWindow);
+
+	return FReply::Handled();
+}
+
 void SAlpakitModEntry::OnEditMod()
 {
 	// Construct the plugin metadata object using the descriptor for this plugin

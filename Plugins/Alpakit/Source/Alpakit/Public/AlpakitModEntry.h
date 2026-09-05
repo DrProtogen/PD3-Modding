@@ -13,6 +13,13 @@ class SAlpakitModEntry : public SCompoundWidget {
 
     void PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& NextEntries) const;
     bool RunPreflightValidation() const;
+
+    FReply OnTogglePALInspector();
+    FReply OnViewPALAssets();
+    FReply OnRefreshPALInspector();
+    FText GetPALInspectorButtonText() const;
+    FText GetPALInspectorSummaryText() const;
+    EVisibility GetPALInspectorVisibility() const;
     void OnEnableCheckboxChanged(ECheckBoxState NewState);
 
     void OnEditMod();
@@ -33,6 +40,10 @@ private:
     TSharedPtr<IPlugin> Mod;
     TSharedPtr<SAlpakitModEntryList> Owner;
     TSharedPtr<class SCheckBox> Checkbox;
+
+    /** Inline PAL/chunk inspector state. */
+    bool bPALInspectorExpanded = false;
+    FText PALInspectorSummary;
     
     /** Dialog for editing mod properties */
     TSharedPtr<SWindow> PropertiesWindow;
