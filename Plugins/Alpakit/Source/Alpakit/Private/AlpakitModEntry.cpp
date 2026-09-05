@@ -21,11 +21,895 @@
 #include "Misc/MessageDialog.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
+#include "Widgets/Input/SMultiLineEditableTextBox.h"
+#include "Widgets/Layout/SBox.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "HAL/PlatformApplicationMisc.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformMisc.h"
 
 #define LOCTEXT_NAMESPACE "AlpakitModListEntry"
 
 namespace
 {
+	struct FAlpakitUATResult
+	{
+		bool bLoaded = false;
+		bool bSuccess = false;
+
+		FString PluginName;
+		FString Phase;
+		FString Mode;
+		FString ChunkId;
+		FString Message;
+		FString ExceptionType;
+		FString Details;
+		FString LogFolder;
+		FString LogFile;
+		FString DurationSeconds;
+	};
+
+	FString GetJsonString(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName)
+	{
+		FString Value;
+
+		if (Object.IsValid())
+		{
+			Object->TryGetStringField(
+				FieldName,
+				Value);
+		}
+
+		return Value;
+	}
+
+	FAlpakitUATResult LoadAlpakitUATResult(
+		const FString& ResultFile)
+	{
+		FAlpakitUATResult Result;
+
+		FString JsonText;
+
+		if (ResultFile.IsEmpty() ||
+			!FFileHelper::LoadFileToString(
+				JsonText,
+				*ResultFile))
+		{
+			return Result;
+		}
+
+		TSharedPtr<FJsonObject> JsonObject;
+		const TSharedRef<TJsonReader<>> Reader =
+			TJsonReaderFactory<>::Create(JsonText);
+
+		if (!FJsonSerializer::Deserialize(
+				Reader,
+				JsonObject) ||
+			!JsonObject.IsValid())
+		{
+			return Result;
+		}
+
+		Result.bLoaded = true;
+
+		const FString Status =
+			GetJsonString(
+				JsonObject,
+				TEXT("Status"));
+
+		Result.bSuccess =
+			Status.Equals(
+				TEXT("Success"),
+				ESearchCase::IgnoreCase);
+
+		Result.PluginName =
+			GetJsonString(
+				JsonObject,
+				TEXT("PluginName"));
+
+		Result.Phase =
+			GetJsonString(
+				JsonObject,
+				TEXT("Phase"));
+
+		Result.Mode =
+			GetJsonString(
+				JsonObject,
+				TEXT("Mode"));
+
+		Result.ChunkId =
+			GetJsonString(
+				JsonObject,
+				TEXT("ChunkId"));
+
+		Result.Message =
+			GetJsonString(
+				JsonObject,
+				TEXT("Message"));
+
+		Result.ExceptionType =
+			GetJsonString(
+				JsonObject,
+				TEXT("ExceptionType"));
+
+		Result.Details =
+			GetJsonString(
+				JsonObject,
+				TEXT("Details"));
+
+		Result.LogFolder =
+			GetJsonString(
+				JsonObject,
+				TEXT("LogFolder"));
+
+		Result.LogFile =
+			GetJsonString(
+				JsonObject,
+				TEXT("LogFile"));
+
+		Result.DurationSeconds =
+			GetJsonString(
+				JsonObject,
+				TEXT("DurationSeconds"));
+
+		return Result;
+	}
+
+	bool DoesResultTypeIndicateFailure(
+		const FString& ResultType)
+	{
+		return
+			ResultType.Contains(
+				TEXT("Fail"),
+				ESearchCase::IgnoreCase) ||
+			ResultType.Contains(
+				TEXT("Error"),
+				ESearchCase::IgnoreCase) ||
+			ResultType.Contains(
+				TEXT("Cancel"),
+				ESearchCase::IgnoreCase);
+	}
+
+	FString GetDefaultAutomationToolLogRoot()
+	{
+		const FString AppData =
+			FPlatformMisc::GetEnvironmentVariable(
+				TEXT("APPDATA"));
+
+		if (AppData.IsEmpty())
+		{
+			return FString();
+		}
+
+		const FString Root =
+			FPaths::Combine(
+				AppData,
+				TEXT("Unreal Engine"),
+				TEXT("AutomationTool"),
+				TEXT("Logs"));
+
+		return IFileManager::Get().DirectoryExists(
+				*Root)
+			? Root
+			: FString();
+	}
+
+	FString FindNewestAutomationToolTextLog(
+		const FString& Root)
+	{
+		if (Root.IsEmpty() ||
+			!IFileManager::Get().DirectoryExists(*Root))
+		{
+			return FString();
+		}
+
+		TArray<FString> Files;
+
+		IFileManager::Get().FindFilesRecursive(
+			Files,
+			*Root,
+			TEXT("*.txt"),
+			true,
+			false,
+			false);
+
+		FString BestFile;
+		FDateTime BestTimestamp =
+			FDateTime::MinValue();
+
+		for (const FString& File : Files)
+		{
+			const FDateTime Timestamp =
+				IFileManager::Get().GetTimeStamp(*File);
+
+			if (Timestamp > BestTimestamp)
+			{
+				BestTimestamp = Timestamp;
+				BestFile = File;
+			}
+		}
+
+		return BestFile;
+	}
+
+	FString ResolveBestUATLogFile(
+		const FAlpakitUATResult& Result)
+	{
+		if (!Result.LogFile.IsEmpty() &&
+			IFileManager::Get().FileExists(
+				*Result.LogFile))
+		{
+			return Result.LogFile;
+		}
+
+		FString LogRoot =
+			Result.LogFolder;
+
+		if (LogRoot.IsEmpty() ||
+			!IFileManager::Get().DirectoryExists(
+				*LogRoot))
+		{
+			LogRoot =
+				GetDefaultAutomationToolLogRoot();
+		}
+
+		if (LogRoot.IsEmpty())
+		{
+			return FString();
+		}
+
+		const FString StandardLog =
+			FPaths::Combine(
+				LogRoot,
+				TEXT("Log.txt"));
+
+		if (IFileManager::Get().FileExists(
+				*StandardLog))
+		{
+			return StandardLog;
+		}
+
+		return FindNewestAutomationToolTextLog(
+			LogRoot);
+	}
+
+	FString ExtractRelevantUATLogLines(
+		const FString& LogFile)
+	{
+		if (LogFile.IsEmpty())
+		{
+			return TEXT(
+				"No AutomationTool log file could be resolved.");
+		}
+
+		FString LogText;
+
+		if (!FFileHelper::LoadFileToString(
+				LogText,
+				*LogFile))
+		{
+			return FString::Printf(
+				TEXT(
+					"Could not read the AutomationTool log:\n%s"),
+				*LogFile);
+		}
+
+		TArray<FString> Lines;
+		LogText.ParseIntoArrayLines(
+			Lines,
+			false);
+
+		TArray<FString> RelevantLines;
+
+		const int32 FirstLine =
+			FMath::Max(
+				0,
+				Lines.Num() - 2500);
+
+		for (int32 Index = FirstLine;
+			 Index < Lines.Num();
+			 ++Index)
+		{
+			const FString& Line =
+				Lines[Index];
+
+			const bool bRelevant =
+				Line.Contains(
+					TEXT("Error:"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("AutomationException"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("BUILD FAILED"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("Cook failed"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("Missing "),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("does not exist"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("Unable to"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("Failed to"),
+					ESearchCase::IgnoreCase) ||
+				Line.Contains(
+					TEXT("Unknown Cook Failure"),
+					ESearchCase::IgnoreCase);
+
+			if (!bRelevant)
+			{
+				continue;
+			}
+
+			FString CleanLine = Line;
+			CleanLine.TrimStartAndEndInline();
+
+			if (CleanLine.IsEmpty())
+			{
+				continue;
+			}
+
+			if (RelevantLines.Num() == 0 ||
+				!RelevantLines.Last().Equals(
+					CleanLine,
+					ESearchCase::CaseSensitive))
+			{
+				RelevantLines.Add(
+					CleanLine);
+			}
+		}
+
+		const int32 MaxLines = 14;
+
+		if (RelevantLines.Num() > MaxLines)
+		{
+			RelevantLines.RemoveAt(
+				0,
+				RelevantLines.Num() - MaxLines);
+		}
+
+		if (RelevantLines.Num() == 0)
+		{
+			const int32 TailStart =
+				FMath::Max(
+					0,
+					Lines.Num() - 12);
+
+			for (int32 Index = TailStart;
+				 Index < Lines.Num();
+				 ++Index)
+			{
+				FString CleanLine =
+					Lines[Index];
+
+				CleanLine.TrimStartAndEndInline();
+
+				if (!CleanLine.IsEmpty())
+				{
+					RelevantLines.Add(
+						CleanLine);
+				}
+			}
+		}
+
+		return FString::Join(
+			RelevantLines,
+			TEXT("\n"));
+	}
+
+	FString ClassifyPackagingFailure(
+		const FAlpakitUATResult& Result)
+	{
+		const FString Combined =
+			Result.Phase +
+			TEXT("\n") +
+			Result.Message +
+			TEXT("\n") +
+			Result.Details;
+
+		if (Combined.Contains(
+				TEXT("Shipping.target"),
+				ESearchCase::IgnoreCase) ||
+			Combined.Contains(
+				TEXT("target receipt"),
+				ESearchCase::IgnoreCase))
+		{
+			return TEXT("Shipping target / receipt");
+		}
+
+		if (Combined.Contains(
+				TEXT("Chunk"),
+				ESearchCase::IgnoreCase) &&
+			(Combined.Contains(
+				TEXT("not found"),
+				ESearchCase::IgnoreCase) ||
+			 Combined.Contains(
+				TEXT("0 entries"),
+				ESearchCase::IgnoreCase) ||
+			 Combined.Contains(
+				TEXT("manifest"),
+				ESearchCase::IgnoreCase)))
+		{
+			return TEXT("PAL chunk / manifest");
+		}
+
+		if (Combined.Contains(
+				TEXT(".utoc"),
+				ESearchCase::IgnoreCase) ||
+			Combined.Contains(
+				TEXT(".ucas"),
+				ESearchCase::IgnoreCase) ||
+			Combined.Contains(
+				TEXT("IoStore"),
+				ESearchCase::IgnoreCase) ||
+			Combined.Contains(
+				TEXT("container"),
+				ESearchCase::IgnoreCase))
+		{
+			return TEXT("IoStore container merge");
+		}
+
+		if (Result.Phase.Contains(
+				TEXT("Cook"),
+				ESearchCase::IgnoreCase))
+		{
+			return TEXT("Cook");
+		}
+
+		if (Result.Phase.Contains(
+				TEXT("Build"),
+				ESearchCase::IgnoreCase))
+		{
+			return TEXT("Build");
+		}
+
+		if (Result.Phase.Contains(
+				TEXT("Deploy"),
+				ESearchCase::IgnoreCase) ||
+			Combined.Contains(
+				TEXT("CopyToGame"),
+				ESearchCase::IgnoreCase))
+		{
+			return TEXT("Deployment");
+		}
+
+		if (Combined.Contains(
+				TEXT("GameDir"),
+				ESearchCase::IgnoreCase) ||
+			Combined.Contains(
+				TEXT("PAYDAY3.exe"),
+				ESearchCase::IgnoreCase))
+		{
+			return TEXT("PAYDAY 3 path");
+		}
+
+		if (Combined.Contains(
+				TEXT("package"),
+				ESearchCase::IgnoreCase) &&
+			(Combined.Contains(
+				TEXT("missing"),
+				ESearchCase::IgnoreCase) ||
+			 Combined.Contains(
+				TEXT("does not exist"),
+				ESearchCase::IgnoreCase)))
+		{
+			return TEXT("Missing package / asset");
+		}
+
+		return TEXT("AutomationTool");
+	}
+
+	FString GetPackagingFailureSuggestion(
+		const FString& Category,
+		const FAlpakitUATResult& Result)
+	{
+		if (Category == TEXT("Automation script compile"))
+		{
+			return TEXT(
+				"AutomationTool failed while compiling/loading Alpakit's C# "
+				"automation script, before PackagePlugin.ExecuteBuild() could run. "
+				"The compiler error from the AutomationTool log is shown below.");
+		}
+
+		if (Category == TEXT("Shipping target / receipt"))
+		{
+			return TEXT(
+				"Alpakit could not prepare the Win64 Shipping target required "
+				"for the project chunk stage. Build PAYDAY3 Win64 Shipping once, "
+				"or inspect the UBT error shown below.");
+		}
+
+		if (Category == TEXT("PAL chunk / manifest"))
+		{
+			return TEXT(
+				"Check that the PAL is registered with Asset Manager, has the "
+				"expected Chunk ID, and that its external /Game assets appear "
+				"in the PAL inspector before packaging.");
+		}
+
+		if (Category == TEXT("IoStore container merge"))
+		{
+			return TEXT(
+				"PASS 2 did not produce the IoStore files Alpakit expected, or "
+				"they could not be merged into the PASS 1 plugin shell. Check "
+				"the selected chunk and the .utoc/.ucas lines below.");
+		}
+
+		if (Category == TEXT("Cook"))
+		{
+			return TEXT(
+				"The Unreal cook failed. The relevant cooker errors are shown "
+				"below; missing packages, invalid references, and serialization "
+				"errors are the most useful lines to fix first.");
+		}
+
+		if (Category == TEXT("Build"))
+		{
+			return TEXT(
+				"The prerequisite game/Shipping build failed. Fix the compiler "
+				"or UnrealBuildTool error shown below, then package the mod again.");
+		}
+
+		if (Category == TEXT("Deployment"))
+		{
+			return TEXT(
+				"Packaging reached deployment but the built mod could not be "
+				"copied to PAYDAY 3. Check the game path and whether files in "
+				"the destination mod folder are locked.");
+		}
+
+		if (Category == TEXT("PAYDAY 3 path"))
+		{
+			return TEXT(
+				"Check Alpakit's PD3Game Path. It must point at the PAYDAY 3 "
+				"installation directory containing PAYDAY3.exe.");
+		}
+
+		if (Category == TEXT("Missing package / asset"))
+		{
+			return TEXT(
+				"A referenced package is missing from the reconstructed project "
+				"or mod. Check the package path in the error and either restore "
+				"the placeholder/reference asset or remove the stale reference.");
+		}
+
+		return FString::Printf(
+			TEXT(
+				"AutomationTool failed during '%s'. The exception and most "
+				"relevant log lines are shown below."),
+			Result.Phase.IsEmpty()
+				? TEXT("an unknown phase")
+				: *Result.Phase);
+	}
+
+	void ShowPackagingFailureWindow(
+		const FString& PluginName,
+		const FString& ResultType,
+		double RunTime,
+		const FString& ResultFile,
+		int32 RemainingModCount)
+	{
+		FAlpakitUATResult Result =
+			LoadAlpakitUATResult(ResultFile);
+
+		if (Result.PluginName.IsEmpty())
+		{
+			Result.PluginName = PluginName;
+		}
+
+		if (!Result.bLoaded)
+		{
+			Result.Message =
+				FString::Printf(
+					TEXT(
+						"AutomationTool returned '%s', but Alpakit's structured "
+						"result file was not produced. The UAT process may have "
+						"failed before PackagePlugin started."),
+					*ResultType);
+
+			Result.Phase =
+				TEXT("AutomationTool startup");
+		}
+
+		const FString LogFile =
+			ResolveBestUATLogFile(Result);
+
+		const FString RelevantLines =
+			ExtractRelevantUATLogLines(LogFile);
+
+		FString Category =
+			ClassifyPackagingFailure(Result);
+
+		if (RelevantLines.Contains(
+				TEXT("error CS"),
+				ESearchCase::IgnoreCase) ||
+			RelevantLines.Contains(
+				TEXT("AutomationScripts.Automation"),
+				ESearchCase::IgnoreCase) ||
+			RelevantLines.Contains(
+				TEXT("AutomationToolScripts"),
+				ESearchCase::IgnoreCase))
+		{
+			Category =
+				TEXT("Automation script compile");
+		}
+
+		const FString Suggestion =
+			GetPackagingFailureSuggestion(
+				Category,
+				Result);
+
+		FString EffectiveLogFolder =
+			Result.LogFolder;
+
+		if (EffectiveLogFolder.IsEmpty() ||
+			!IFileManager::Get().DirectoryExists(
+				*EffectiveLogFolder))
+		{
+			EffectiveLogFolder =
+				GetDefaultAutomationToolLogRoot();
+		}
+
+		const FString RuntimeText =
+			FString::Printf(
+				TEXT("%.1f seconds"),
+				RunTime);
+
+		FString Summary =
+			FString::Printf(
+				TEXT(
+					"Mod: %s\n"
+					"Result: %s\n"
+					"Phase: %s\n"
+					"Category: %s\n"
+					"Mode: %s\n"
+					"Chunk: %s\n"
+					"Runtime: %s\n\n"
+					"%s\n\n"
+					"Error:\n%s"
+				),
+				*Result.PluginName,
+				*ResultType,
+				Result.Phase.IsEmpty()
+					? TEXT("Unknown")
+					: *Result.Phase,
+				*Category,
+				Result.Mode.IsEmpty()
+					? TEXT("Unknown")
+					: *Result.Mode,
+				Result.ChunkId.IsEmpty()
+					? TEXT("-")
+					: *Result.ChunkId,
+				*RuntimeText,
+				*Suggestion,
+				Result.Message.IsEmpty()
+					? TEXT("No exception message was recorded.")
+					: *Result.Message);
+
+		if (RemainingModCount > 0)
+		{
+			Summary += FString::Printf(
+				TEXT(
+					"\n\nBatch stopped: %d remaining selected mod(s) were not packaged."),
+				RemainingModCount);
+		}
+
+		const FString ClipboardReport =
+			Summary +
+			TEXT("\n\nRelevant log lines:\n") +
+			RelevantLines +
+			(LogFile.IsEmpty()
+				? FString()
+				: TEXT("\n\nLog file:\n") + LogFile);
+
+		TSharedRef<SWindow> FailureWindow =
+			SNew(SWindow)
+				.Title(
+					FText::FromString(
+						FString::Printf(
+							TEXT(
+								"Alpakit Packaging Failed - %s"),
+							*PluginName)))
+				.ClientSize(
+					FVector2D(
+						900.0f,
+						700.0f))
+				.SupportsMaximize(true)
+				.SupportsMinimize(false);
+
+		FailureWindow->SetContent(
+			SNew(SBorder)
+				.Padding(FMargin(10.0f))
+				[
+					SNew(SVerticalBox)
+
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SNew(STextBlock)
+							.Text(
+								FText::FromString(
+									Summary))
+							.AutoWrapText(true)
+					]
+
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(
+						0.0f,
+						10.0f,
+						0.0f,
+						4.0f)
+					[
+						SNew(STextBlock)
+							.Text(
+								LOCTEXT(
+									"AlpakitRelevantUATLines",
+									"Relevant log lines"))
+					]
+
+					+ SVerticalBox::Slot()
+					.FillHeight(1.0f)
+					[
+						SNew(SMultiLineEditableTextBox)
+							.IsReadOnly(true)
+							.Text(
+								FText::FromString(
+									RelevantLines))
+					]
+
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(
+						0.0f,
+						8.0f,
+						0.0f,
+						0.0f)
+					[
+						SNew(STextBlock)
+							.Text(
+								FText::FromString(
+									LogFile.IsEmpty()
+										? TEXT(
+											"Full UAT log: unavailable")
+										: FString::Printf(
+											TEXT(
+												"Full UAT log: %s"),
+											*LogFile)))
+							.AutoWrapText(true)
+					]
+
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(
+						0.0f,
+						10.0f,
+						0.0f,
+						0.0f)
+					[
+						SNew(SHorizontalBox)
+
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(
+							0.0f,
+							0.0f,
+							5.0f,
+							0.0f)
+						[
+							SNew(SButton)
+								.Text(
+									LOCTEXT(
+										"CopyAlpakitPackagingError",
+										"Copy Error"))
+								.OnClicked_Lambda(
+									[ClipboardReport]()
+									{
+										FPlatformApplicationMisc::ClipboardCopy(
+											*ClipboardReport);
+
+										return FReply::Handled();
+									})
+						]
+
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(
+							0.0f,
+							0.0f,
+							5.0f,
+							0.0f)
+						[
+							SNew(SButton)
+								.Text(
+									LOCTEXT(
+										"OpenAlpakitUATLog",
+										"Open Full Log"))
+								.IsEnabled(
+									!LogFile.IsEmpty())
+								.OnClicked_Lambda(
+									[LogFile]()
+									{
+										if (!LogFile.IsEmpty())
+										{
+											FPlatformProcess::
+												LaunchFileInDefaultExternalApplication(
+													*LogFile);
+										}
+
+										return FReply::Handled();
+									})
+						]
+
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(
+							0.0f,
+							0.0f,
+							5.0f,
+							0.0f)
+						[
+							SNew(SButton)
+								.Text(
+									LOCTEXT(
+										"OpenAlpakitUATLogFolder",
+										"Open Log Folder"))
+								.IsEnabled(
+									!EffectiveLogFolder.IsEmpty())
+								.OnClicked_Lambda(
+									[LogFolder = EffectiveLogFolder]()
+									{
+										if (!LogFolder.IsEmpty())
+										{
+											FPlatformProcess::ExploreFolder(
+												*LogFolder);
+										}
+
+										return FReply::Handled();
+									})
+						]
+
+						+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						[
+							SNew(SSpacer)
+						]
+
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						[
+							SNew(SButton)
+								.Text(
+									LOCTEXT(
+										"CloseAlpakitPackagingError",
+										"Close"))
+								.OnClicked_Lambda(
+									[FailureWindow]()
+									{
+										FailureWindow
+											->RequestDestroyWindow();
+
+										return FReply::Handled();
+									})
+						]
+					]
+				]
+		);
+
+		FSlateApplication::Get().AddWindow(
+			FailureWindow);
+	}
+
 	enum class EAlpakitPreflightSeverity : uint8
 	{
 		Pass,
@@ -1779,6 +2663,34 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
 
     UE_LOG(LogAlpakit, Display, TEXT("Packaging plugin \"%s\". %d remaining"), *PluginName, NextEntries.Num());
 
+    const FString ResultDirectory =
+        FPaths::Combine(
+            FPaths::ProjectSavedDir(),
+            TEXT("Alpakit"),
+            TEXT("Results"));
+
+    IFileManager::Get().MakeDirectory(
+        *ResultDirectory,
+        true);
+
+    const FString ResultFile =
+        FPaths::Combine(
+            ResultDirectory,
+            FPaths::MakeValidFileName(
+                PluginName + TEXT("_PackageResult.json")));
+
+    // Never let a stale result from a previous packaging run be displayed.
+    IFileManager::Get().Delete(
+        *ResultFile,
+        false,
+        true,
+        true);
+
+    AdditionalUATArguments.Append(
+        FString::Printf(
+            TEXT("-AlpakitResultFile=\"%s\" "),
+            *ResultFile));
+
     const FString CommandLine = FString::Printf(
         TEXT("-ScriptsForProject=\"%s\" PackagePlugin -Project=\"%s\" -PluginName=\"%s\" -GameDir=\"%s\" %s"),
         *ProjectPath,
@@ -1796,16 +2708,61 @@ void SAlpakitModEntry::PackageMod(const TArray<TSharedPtr<SAlpakitModEntry>>& Ne
         LOCTEXT("PackageModTaskShortName", "Package Mod Task"),
         FAlpakitStyle::Get().GetBrush("Alpakit.OpenPluginWindow"),
         nullptr,
-        NextEntries.Num() == 0 ? (IUATHelperModule::UatTaskResultCallack)nullptr : [NextEntries](FString resultType, double runTime) {
-            AsyncTask(ENamedThreads::GameThread, [NextEntries]() {
-                TSharedPtr<SAlpakitModEntry> NextMod = NextEntries[0];
+        [PluginName, ResultFile, NextEntries](
+            FString resultType,
+            double runTime)
+        {
+            AsyncTask(
+                ENamedThreads::GameThread,
+                [PluginName,
+                 ResultFile,
+                 NextEntries,
+                 resultType,
+                 runTime]()
+                {
+                    const FAlpakitUATResult ParsedResult =
+                        LoadAlpakitUATResult(ResultFile);
 
-                TArray<TSharedPtr<SAlpakitModEntry>> RemainingEntries = NextEntries.FilterByPredicate([NextMod](const TSharedPtr<SAlpakitModEntry>& X) {
-                    return X != NextMod;
+                    const bool bFailed =
+                        ParsedResult.bLoaded
+                            ? !ParsedResult.bSuccess
+                            : DoesResultTypeIndicateFailure(
+                                resultType);
+
+                    if (bFailed)
+                    {
+                        ShowPackagingFailureWindow(
+                            PluginName,
+                            resultType,
+                            runTime,
+                            ResultFile,
+                            NextEntries.Num());
+
+                        return;
+                    }
+
+                    // Continue a selected-mod batch only after a successful
+                    // package. A failure stops the batch so later results do
+                    // not bury the actual first error.
+                    if (NextEntries.Num() > 0)
+                    {
+                        TSharedPtr<SAlpakitModEntry> NextMod =
+                            NextEntries[0];
+
+                        TArray<TSharedPtr<SAlpakitModEntry>>
+                            RemainingEntries =
+                                NextEntries.FilterByPredicate(
+                                    [NextMod](
+                                        const TSharedPtr<
+                                            SAlpakitModEntry>& X)
+                                    {
+                                        return X != NextMod;
+                                    });
+
+                        NextMod->PackageMod(
+                            RemainingEntries);
+                    }
                 });
-
-                NextMod->PackageMod(RemainingEntries);
-            });
         }
     );
 }

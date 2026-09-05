@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using AutomationTool;
 using EpicGames.Core;
 using UnrealBuildTool;
@@ -16,6 +17,192 @@ namespace Alpakit.Automation
 		public bool StartGame;
 		public string GameDirectory;
 		public string LaunchGameURL;
+	}
+
+	/// <summary>
+	/// Writes a small structured result file that the editor-side Alpakit UI
+	/// can consume when UAT finishes. This avoids forcing users to dig through
+	/// thousands of UAT lines just to find the phase and actual exception.
+	/// </summary>
+	internal sealed class AlpakitPackageResult
+	{
+		private readonly string ResultFile;
+		private readonly Stopwatch Stopwatch = Stopwatch.StartNew();
+
+		public string PluginName { get; set; } = "";
+		public string Phase { get; private set; } = "Initialization";
+		public string Mode { get; set; } = "Unknown";
+		public int ChunkId { get; set; } = -1;
+
+		public AlpakitPackageResult(string resultFile)
+		{
+			ResultFile = resultFile;
+		}
+
+		public void SetPhase(string phase)
+		{
+			Phase = string.IsNullOrWhiteSpace(phase)
+				? "Unknown"
+				: phase;
+		}
+
+		private static string GetUATLogFolder()
+		{
+			return Environment.GetEnvironmentVariable("uebp_LogFolder") ?? "";
+		}
+
+		private string FindMostRelevantLogFile()
+		{
+			try
+			{
+				string logFolder = GetUATLogFolder();
+				if (string.IsNullOrWhiteSpace(logFolder) ||
+				    !Directory.Exists(logFolder))
+				{
+					return "";
+				}
+
+				string[] files = Directory.GetFiles(
+					logFolder,
+					"*.txt",
+					SearchOption.TopDirectoryOnly
+				);
+
+				if (files.Length == 0)
+				{
+					return "";
+				}
+
+				IEnumerable<string> preferred = files;
+
+				if (Phase.IndexOf(
+						"Cook",
+						StringComparison.OrdinalIgnoreCase) >= 0)
+				{
+					var cookFiles = files.Where(
+						file => Path.GetFileName(file).StartsWith(
+							"Cook",
+							StringComparison.OrdinalIgnoreCase
+						)
+					);
+
+					if (cookFiles.Any())
+					{
+						preferred = cookFiles;
+					}
+				}
+				else if (Phase.IndexOf(
+						"Build",
+						StringComparison.OrdinalIgnoreCase) >= 0)
+				{
+					var buildFiles = files.Where(
+						file =>
+						{
+							string name = Path.GetFileName(file);
+							return name.StartsWith(
+								"UBT",
+								StringComparison.OrdinalIgnoreCase
+							) ||
+							name.IndexOf(
+								"Build",
+								StringComparison.OrdinalIgnoreCase
+							) >= 0;
+						}
+					);
+
+					if (buildFiles.Any())
+					{
+						preferred = buildFiles;
+					}
+				}
+
+				return preferred
+					.OrderByDescending(File.GetLastWriteTimeUtc)
+					.FirstOrDefault() ?? "";
+			}
+			catch
+			{
+				return "";
+			}
+		}
+
+		private void Write(
+			string status,
+			string message,
+			Exception exception)
+		{
+			if (string.IsNullOrWhiteSpace(ResultFile))
+			{
+				return;
+			}
+
+			try
+			{
+				string directory = Path.GetDirectoryName(ResultFile);
+				if (!string.IsNullOrWhiteSpace(directory))
+				{
+					Directory.CreateDirectory(directory);
+				}
+
+				string logFolder = GetUATLogFolder();
+				string logFile = FindMostRelevantLogFile();
+
+				using (var writer = new JsonWriter(ResultFile))
+				{
+					writer.WriteObjectStart();
+
+					writer.WriteValue("Status", status ?? "");
+					writer.WriteValue("PluginName", PluginName ?? "");
+					writer.WriteValue("Phase", Phase ?? "");
+					writer.WriteValue("Mode", Mode ?? "");
+					writer.WriteValue("ChunkId", ChunkId.ToString());
+					writer.WriteValue("Message", message ?? "");
+					writer.WriteValue(
+						"ExceptionType",
+						exception?.GetType().FullName ?? ""
+					);
+					writer.WriteValue(
+						"Details",
+						exception?.ToString() ?? ""
+					);
+					writer.WriteValue("LogFolder", logFolder ?? "");
+					writer.WriteValue("LogFile", logFile ?? "");
+					writer.WriteValue(
+						"DurationSeconds",
+						Stopwatch.Elapsed.TotalSeconds.ToString("F2")
+					);
+					writer.WriteValue(
+						"TimestampUtc",
+						DateTime.UtcNow.ToString("O")
+					);
+
+					writer.WriteObjectEnd();
+				}
+			}
+			catch
+			{
+				// Never mask the real packaging failure because diagnostic
+				// result-file writing itself failed.
+			}
+		}
+
+		public void WriteSuccess()
+		{
+			Write(
+				"Success",
+				"Packaging completed successfully.",
+				null
+			);
+		}
+
+		public void WriteFailure(Exception exception)
+		{
+			Write(
+				"Failure",
+				exception?.Message ?? "AutomationTool failed.",
+				exception
+			);
+		}
 	}
 
 	public class PackagePlugin : BuildCommand
@@ -1346,10 +1533,13 @@ namespace Alpakit.Automation
 
 		private static void ExecuteLegacyCook(
 			BuildCommand cmd,
-			PD3Params pd3Params)
+			PD3Params pd3Params,
+			AlpakitPackageResult result)
 		{
+			result.SetPhase("Single-stage: Prepare DLC cook");
 			var projectParams = GetDLCParams(cmd);
 
+			result.SetPhase("Single-stage: Cook");
 			Project.Cook(projectParams);
 
 			var deploymentContexts =
@@ -1362,10 +1552,13 @@ namespace Alpakit.Automation
 
 			try
 			{
+				result.SetPhase("Single-stage: Stage");
 				CopyBuildToStagingDirectory(
 					projectParams,
 					deploymentContexts
 				);
+
+				result.SetPhase("Single-stage: Finalize containers");
 
 				// Legacy/single-pass mods never enter PASS 2, so apply the
 				// PAYDAY 3 patch suffix directly to their staged plugin containers.
@@ -1379,11 +1572,13 @@ namespace Alpakit.Automation
 					ApplyPatchSuffixToPluginContainers(stagedPluginDirectory);
 				}
 
+				result.SetPhase("Archive mod");
 				ArchivePluginProject(
 					projectParams,
 					deploymentContexts
 				);
 
+				result.SetPhase("Deploy mod to PAYDAY 3");
 				DeployPluginProject(
 					projectParams,
 					deploymentContexts,
@@ -1400,7 +1595,8 @@ namespace Alpakit.Automation
 			BuildCommand cmd,
 			PD3Params pd3Params,
 			string pluginName,
-			int chunkId)
+			int chunkId,
+			AlpakitPackageResult result)
 		{
 			IReadOnlyList<DeploymentContext> dlcContexts = null;
 			IReadOnlyList<DeploymentContext> chunkContexts = null;
@@ -1422,8 +1618,10 @@ namespace Alpakit.Automation
 					"=================================================="
 				);
 
+				result.SetPhase("PASS 1: Prepare plugin DLC cook");
 				var dlcParams = GetDLCParams(cmd);
 
+				result.SetPhase("PASS 1: Cook plugin DLC");
 				Project.Cook(dlcParams);
 
 				dlcContexts =
@@ -1434,11 +1632,13 @@ namespace Alpakit.Automation
 					dlcContexts
 				);
 
+				result.SetPhase("PASS 1: Stage plugin DLC");
 				CopyBuildToStagingDirectory(
 					dlcParams,
 					dlcContexts
 				);
 
+				result.SetPhase("PASS 1: Preserve plugin shell");
 				workingPluginDirectory =
 					CopyDLCPluginToWorkingDirectory(
 						dlcParams,
@@ -1464,6 +1664,7 @@ namespace Alpakit.Automation
 					"=================================================="
 				);
 
+				result.SetPhase("PASS 2: Prepare PAL chunk cook");
 				var chunkParams = GetChunkParams(cmd);
 
 				/*
@@ -1515,6 +1716,7 @@ namespace Alpakit.Automation
 					 *
 					 * PASS 2 only needs the game/Shipping receipt for staging.
 					 */
+					result.SetPhase("PASS 2: Build Shipping target");
 					Project.Build(
 						cmd,
 						chunkParams,
@@ -1530,6 +1732,7 @@ namespace Alpakit.Automation
 					);
 				}
 
+				result.SetPhase("PASS 2: Cook PAL chunk");
 				Project.Cook(chunkParams);
 
 				chunkContexts =
@@ -1537,11 +1740,13 @@ namespace Alpakit.Automation
 
 				// DO NOT call RemapCookedPluginsContentPaths here.
 				// PASS 2 is a normal project/chunk cook, not DLC.
+				result.SetPhase("PASS 2: Stage PAL chunk");
 				CopyBuildToStagingDirectory(
 					chunkParams,
 					chunkContexts
 				);
 
+				result.SetPhase("PASS 2: Merge IoStore containers");
 				InjectChunkIntoPluginDLC(
 					workingPluginDirectory,
 					chunkContexts,
@@ -1565,6 +1770,7 @@ namespace Alpakit.Automation
 
 				// Archive/deploy the PASS 1 plugin shell after PASS 2's
 				// pak/utoc/ucas have been injected into Content/Paks.
+				result.SetPhase("Archive mod");
 				ArchiveWorkingPlugin(
 					dlcParams,
 					workingPluginDirectory,
@@ -1572,6 +1778,7 @@ namespace Alpakit.Automation
 					finalCookPlatform
 				);
 
+				result.SetPhase("Deploy mod to PAYDAY 3");
 				DeployWorkingPlugin(
 					dlcParams,
 					pd3Params,
@@ -1591,75 +1798,113 @@ namespace Alpakit.Automation
 
 		public override void ExecuteBuild()
 		{
-			var pluginName = GetPluginName(this);
-			var chunkId = GetRequestedChunkId(this);
+			string resultFile =
+				ParseOptionalStringParam("AlpakitResultFile");
 
-			string gameDir =
-				ParseOptionalStringParam("GameDir");
+			var result =
+				new AlpakitPackageResult(resultFile);
 
-			if (!string.IsNullOrEmpty(gameDir))
+			try
 			{
-				var bootstrapExePath =
-					Path.Combine(gameDir, GameExecutableName);
+				result.SetPhase("Validate packaging request");
 
-				if (!FileExists(bootstrapExePath))
+				var pluginName = GetPluginName(this);
+				var chunkId = GetRequestedChunkId(this);
+
+				result.PluginName = pluginName;
+				result.ChunkId = chunkId;
+				result.Mode =
+					chunkId >= 0
+						? "Two-stage"
+						: "Single-stage";
+
+				string gameDir =
+					ParseOptionalStringParam("GameDir");
+
+				result.SetPhase("Validate PAYDAY 3 path");
+
+				if (!string.IsNullOrEmpty(gameDir))
 				{
-					throw new AutomationException(
-						"Provided -GameDir is invalid: expected '{0}'",
-						bootstrapExePath
+					var bootstrapExePath =
+						Path.Combine(
+							gameDir,
+							GameExecutableName
+						);
+
+					if (!FileExists(bootstrapExePath))
+					{
+						throw new AutomationException(
+							"Provided -GameDir is invalid: expected '{0}'",
+							bootstrapExePath
+						);
+					}
+				}
+
+				var pd3Params = new PD3Params
+				{
+					GameDirectory = gameDir,
+					StartGame = ParseParam("LaunchGame"),
+					CopyToGameDirectory =
+						ParseParam("CopyToGameDir")
+				};
+
+				if (pd3Params.StartGame)
+				{
+					pd3Params.LaunchGameURL =
+						GetGameLaunchURL();
+				}
+
+				if (chunkId >= 0)
+				{
+					LogInformation(
+						"Alpakit two-stage mode: Plugin={0}, Chunk={1}",
+						pluginName,
+						chunkId
+					);
+
+					ExecuteTwoStageCook(
+						this,
+						pd3Params,
+						pluginName,
+						chunkId,
+						result
 					);
 				}
+				else
+				{
+					LogInformation(
+						"No ChunkId supplied. Using original Alpakit DLC cook."
+					);
+
+					ExecuteLegacyCook(
+						this,
+						pd3Params,
+						result
+					);
+				}
+
+				if (pd3Params.StartGame &&
+				    !string.IsNullOrWhiteSpace(
+					    pd3Params.LaunchGameURL))
+				{
+					result.SetPhase("Launch PAYDAY 3");
+
+					Process.Start(
+						new ProcessStartInfo(
+							pd3Params.LaunchGameURL)
+						{
+							UseShellExecute = true
+						}
+					);
+				}
+
+				result.SetPhase("Completed");
+				result.WriteSuccess();
 			}
-
-			var pd3Params = new PD3Params
+			catch (Exception exception)
 			{
-				GameDirectory = gameDir,
-				StartGame = ParseParam("LaunchGame"),
-				CopyToGameDirectory =
-					ParseParam("CopyToGameDir")
-			};
-
-			if (pd3Params.StartGame)
-			{
-				pd3Params.LaunchGameURL =
-					GetGameLaunchURL();
-			}
-
-			if (chunkId >= 0)
-			{
-				LogInformation(
-					"Alpakit two-stage mode: Plugin={0}, Chunk={1}",
-					pluginName,
-					chunkId
-				);
-
-				ExecuteTwoStageCook(
-					this,
-					pd3Params,
-					pluginName,
-					chunkId
-				);
-			}
-			else
-			{
-				LogInformation(
-					"No ChunkId supplied. Using original Alpakit DLC cook."
-				);
-
-				ExecuteLegacyCook(this, pd3Params);
-			}
-
-			if (pd3Params.StartGame &&
-			    !string.IsNullOrWhiteSpace(
-				    pd3Params.LaunchGameURL))
-			{
-				Process.Start(
-					new ProcessStartInfo(
-						pd3Params.LaunchGameURL)
-					{
-						UseShellExecute = true
-					}
-				);
+				result.WriteFailure(exception);
+				throw;
 			}
 		}
 	}

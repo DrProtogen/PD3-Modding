@@ -30,7 +30,8 @@ public class Alpakit : ModuleRules
 			"DesktopPlatform",
 			"AssetRegistry",
 			"AssetTools",
-			"EditorScriptingUtilities"
+			"EditorScriptingUtilities",
+			"ApplicationCore"
 		});
 	}
 }
