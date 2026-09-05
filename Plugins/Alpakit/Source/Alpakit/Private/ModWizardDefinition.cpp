@@ -22,6 +22,9 @@
 #include "Subsystems/EditorAssetSubsystem.h"
 #include "Engine/PrimaryAssetLabel.h"
 #include "EditorAssetLibrary.h"
+#include "Engine/Blueprint.h"
+#include "UObject/UnrealType.h"
+#include "UObject/StructOnScope.h"
 
 #define LOCTEXT_NAMESPACE "NewModWizard"
 
@@ -193,6 +196,1005 @@ namespace
 			TEXT("Wrote PDML dependency to %s (SemVersion=%s)"),
 			*PluginDescriptorFileName,
 			*PDMLSemVersion
+		);
+
+		return true;
+	}
+
+
+	static FString NormalizeMetadataPropertyKey(const FString& InValue)
+	{
+		FString Result;
+		Result.Reserve(InValue.Len());
+
+		for (const TCHAR Character : InValue)
+		{
+			if (FChar::IsAlnum(Character))
+			{
+				Result.AppendChar(
+					FChar::ToLower(Character)
+				);
+			}
+		}
+
+		return Result;
+	}
+
+	static FProperty* FindMetadataProperty(
+		UStruct* Struct,
+		std::initializer_list<const TCHAR*> Aliases)
+	{
+		if (!Struct)
+		{
+			return nullptr;
+		}
+
+		TArray<FString> NormalizedAliases;
+
+		for (const TCHAR* Alias : Aliases)
+		{
+			NormalizedAliases.Add(
+				NormalizeMetadataPropertyKey(Alias)
+			);
+		}
+
+		for (TFieldIterator<FProperty> It(Struct); It; ++It)
+		{
+			FProperty* Property = *It;
+
+			const FString PropertyName =
+				NormalizeMetadataPropertyKey(
+					Property->GetName()
+				);
+
+			const FString DisplayName =
+				NormalizeMetadataPropertyKey(
+					Property->GetDisplayNameText().ToString()
+				);
+
+			for (const FString& Alias : NormalizedAliases)
+			{
+				if (PropertyName == Alias ||
+					DisplayName == Alias)
+				{
+					return Property;
+				}
+			}
+		}
+
+		return nullptr;
+	}
+
+	static bool SetMetadataTextValue(
+		UObject* Object,
+		FProperty* Property,
+		const FString& Value)
+	{
+		if (!Object || !Property)
+		{
+			return false;
+		}
+
+		void* ValuePtr =
+			Property->ContainerPtrToValuePtr<void>(Object);
+
+		if (FStrProperty* StringProperty =
+				CastField<FStrProperty>(Property))
+		{
+			StringProperty->SetPropertyValue(
+				ValuePtr,
+				Value
+			);
+			return true;
+		}
+
+		if (FNameProperty* NameProperty =
+				CastField<FNameProperty>(Property))
+		{
+			NameProperty->SetPropertyValue(
+				ValuePtr,
+				Value.IsEmpty()
+					? NAME_None
+					: FName(*Value)
+			);
+			return true;
+		}
+
+		if (FTextProperty* TextProperty =
+				CastField<FTextProperty>(Property))
+		{
+			TextProperty->SetPropertyValue(
+				ValuePtr,
+				FText::FromString(Value)
+			);
+			return true;
+		}
+
+		return false;
+	}
+
+	static bool SetMetadataStringArray(
+		UObject* Object,
+		FProperty* Property,
+		const TArray<FString>& Values)
+	{
+		if (!Object || !Property)
+		{
+			return false;
+		}
+
+		FArrayProperty* ArrayProperty =
+			CastField<FArrayProperty>(Property);
+
+		if (!ArrayProperty)
+		{
+			return false;
+		}
+
+		FScriptArrayHelper ArrayHelper(
+			ArrayProperty,
+			ArrayProperty->ContainerPtrToValuePtr<void>(Object)
+		);
+
+		ArrayHelper.EmptyValues();
+
+		for (const FString& Value : Values)
+		{
+			if (Value.IsEmpty())
+			{
+				continue;
+			}
+
+			const int32 Index =
+				ArrayHelper.AddValue();
+
+			void* ElementPtr =
+				ArrayHelper.GetRawPtr(Index);
+
+			if (FStrProperty* StringProperty =
+					CastField<FStrProperty>(
+						ArrayProperty->Inner))
+			{
+				StringProperty->SetPropertyValue(
+					ElementPtr,
+					Value
+				);
+			}
+			else if (FNameProperty* NameProperty =
+					 CastField<FNameProperty>(
+						 ArrayProperty->Inner))
+			{
+				NameProperty->SetPropertyValue(
+					ElementPtr,
+					FName(*Value)
+				);
+			}
+			else if (FTextProperty* TextProperty =
+					 CastField<FTextProperty>(
+						 ArrayProperty->Inner))
+			{
+				TextProperty->SetPropertyValue(
+					ElementPtr,
+					FText::FromString(Value)
+				);
+			}
+			else
+			{
+				ArrayHelper.RemoveValues(Index, 1);
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	static bool FindEnumValueByName(
+		UEnum* Enum,
+		const FString& RequestedValue,
+		int64& OutValue)
+	{
+		if (!Enum)
+		{
+			return false;
+		}
+
+		const FString RequestedKey =
+			NormalizeMetadataPropertyKey(RequestedValue);
+
+		for (int32 Index = 0;
+			 Index < Enum->NumEnums();
+			 ++Index)
+		{
+			const FString EnumName =
+				Enum->GetNameStringByIndex(Index);
+
+			if (EnumName.EndsWith(TEXT("_MAX")))
+			{
+				continue;
+			}
+
+			const FString NameKey =
+				NormalizeMetadataPropertyKey(EnumName);
+
+			const FString DisplayKey =
+				NormalizeMetadataPropertyKey(
+					Enum->GetDisplayNameTextByIndex(Index)
+						.ToString()
+				);
+
+			if (NameKey == RequestedKey ||
+				DisplayKey == RequestedKey ||
+				NameKey.EndsWith(RequestedKey) ||
+				DisplayKey.EndsWith(RequestedKey))
+			{
+				OutValue =
+					Enum->GetValueByIndex(Index);
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	static bool SetMetadataEnumValue(
+		UObject* Object,
+		FProperty* Property,
+		const FString& RequestedValue)
+	{
+		if (!Object || !Property)
+		{
+			return false;
+		}
+
+		if (FEnumProperty* EnumProperty =
+				CastField<FEnumProperty>(Property))
+		{
+			int64 EnumValue = 0;
+
+			if (!FindEnumValueByName(
+					EnumProperty->GetEnum(),
+					RequestedValue,
+					EnumValue))
+			{
+				return false;
+			}
+
+			void* ValuePtr =
+				EnumProperty->ContainerPtrToValuePtr<void>(
+					Object
+				);
+
+			EnumProperty->GetUnderlyingProperty()
+				->SetIntPropertyValue(
+					ValuePtr,
+					EnumValue
+				);
+
+			return true;
+		}
+
+		if (FByteProperty* ByteProperty =
+				CastField<FByteProperty>(Property))
+		{
+			if (!ByteProperty->Enum)
+			{
+				return false;
+			}
+
+			int64 EnumValue = 0;
+
+			if (!FindEnumValueByName(
+					ByteProperty->Enum,
+					RequestedValue,
+					EnumValue))
+			{
+				return false;
+			}
+
+			ByteProperty->SetPropertyValue_InContainer(
+				Object,
+				static_cast<uint8>(EnumValue)
+			);
+
+			return true;
+		}
+
+		return false;
+	}
+
+	static bool IsGeneratedModActorClass(
+		UClass* GeneratedClass,
+		UClass* ModActorBaseClass)
+	{
+		if (!GeneratedClass)
+		{
+			return false;
+		}
+
+		if (ModActorBaseClass &&
+			GeneratedClass != ModActorBaseClass &&
+			GeneratedClass->IsChildOf(ModActorBaseClass))
+		{
+			return true;
+		}
+
+		// Fallback if the PDML base class could not be loaded directly.
+		for (UClass* Class = GeneratedClass;
+			 Class;
+			 Class = Class->GetSuperClass())
+		{
+			if (Class->GetName().Equals(
+					TEXT("ModActorBase_C"),
+					ESearchCase::IgnoreCase))
+			{
+				return GeneratedClass != Class;
+			}
+		}
+
+		return false;
+	}
+
+	static TArray<UClass*> FindModActorClassesInPlugin(
+		const FString& PluginContentPath)
+	{
+		TArray<UClass*> Result;
+
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+				TEXT("AssetRegistry")
+			);
+
+		IAssetRegistry& AssetRegistry =
+			AssetRegistryModule.Get();
+
+		TArray<FString> PathsToScan;
+		PathsToScan.Add(PluginContentPath);
+
+		AssetRegistry.ScanPathsSynchronous(
+			PathsToScan,
+			true
+		);
+
+		TArray<FAssetData> Assets;
+
+		AssetRegistry.GetAssetsByPath(
+			FName(*PluginContentPath),
+			Assets,
+			true
+		);
+
+		UClass* ModActorBaseClass =
+			LoadObject<UClass>(
+				nullptr,
+				TEXT(
+					"/PDML/Blueprints/ModActorBase."
+					"ModActorBase_C"
+				)
+			);
+
+		for (const FAssetData& AssetData : Assets)
+		{
+			UBlueprint* Blueprint =
+				Cast<UBlueprint>(AssetData.GetAsset());
+
+			if (!Blueprint ||
+				!Blueprint->GeneratedClass)
+			{
+				continue;
+			}
+
+			if (IsGeneratedModActorClass(
+					Blueprint->GeneratedClass,
+					ModActorBaseClass))
+			{
+				Result.AddUnique(
+					Blueprint->GeneratedClass
+				);
+			}
+		}
+
+		Result.Sort(
+			[](const UClass& A, const UClass& B)
+			{
+				return A.GetPathName() <
+					B.GetPathName();
+			}
+		);
+
+		return Result;
+	}
+
+	static FProperty* FindModActorClassField(
+		UScriptStruct* Struct)
+	{
+		if (!Struct)
+		{
+			return nullptr;
+		}
+
+		FProperty* FallbackClassProperty = nullptr;
+
+		for (TFieldIterator<FProperty> It(Struct); It; ++It)
+		{
+			FProperty* Property = *It;
+
+			const FString PropertyKey =
+				NormalizeMetadataPropertyKey(
+					Property->GetDisplayNameText().ToString()
+				);
+
+			const bool bClassCompatible =
+				CastField<FClassProperty>(Property) != nullptr ||
+				CastField<FSoftClassProperty>(Property) != nullptr;
+
+			if (!bClassCompatible)
+			{
+				continue;
+			}
+
+			if (!FallbackClassProperty)
+			{
+				FallbackClassProperty = Property;
+			}
+
+			if (PropertyKey.Contains(
+					TEXT("modactorclass")))
+			{
+				return Property;
+			}
+		}
+
+		return FallbackClassProperty;
+	}
+
+	static bool SetStructClassValue(
+		FProperty* Property,
+		void* StructMemory,
+		UClass* ClassValue)
+	{
+		if (!Property ||
+			!StructMemory ||
+			!ClassValue)
+		{
+			return false;
+		}
+
+		if (FClassProperty* ClassProperty =
+				CastField<FClassProperty>(Property))
+		{
+			void* ValuePtr =
+				ClassProperty->ContainerPtrToValuePtr<void>(
+					StructMemory
+				);
+
+			ClassProperty->SetObjectPropertyValue(
+				ValuePtr,
+				ClassValue
+			);
+
+			return true;
+		}
+
+		if (FSoftClassProperty* SoftClassProperty =
+				CastField<FSoftClassProperty>(Property))
+		{
+			void* ValuePtr =
+				SoftClassProperty->ContainerPtrToValuePtr<void>(
+					StructMemory
+				);
+
+			SoftClassProperty->SetPropertyValue(
+				ValuePtr,
+				FSoftObjectPtr(ClassValue)
+			);
+
+			return true;
+		}
+
+		return false;
+	}
+
+	static bool PopulateModActorsArray(
+		UObject* DataAsset,
+		FProperty* Property,
+		const TArray<UClass*>& ModActorClasses)
+	{
+		if (!DataAsset || !Property)
+		{
+			return false;
+		}
+
+		FArrayProperty* ArrayProperty =
+			CastField<FArrayProperty>(Property);
+
+		if (!ArrayProperty)
+		{
+			return false;
+		}
+
+		FStructProperty* StructProperty =
+			CastField<FStructProperty>(
+				ArrayProperty->Inner
+			);
+
+		if (!StructProperty ||
+			!StructProperty->Struct)
+		{
+			return false;
+		}
+
+		FProperty* ActorClassProperty =
+			FindModActorClassField(
+				StructProperty->Struct
+			);
+
+		if (!ActorClassProperty)
+		{
+			return false;
+		}
+
+		FScriptArrayHelper ArrayHelper(
+			ArrayProperty,
+			ArrayProperty->ContainerPtrToValuePtr<void>(
+				DataAsset
+			)
+		);
+
+		/*
+		 * The LogicMod template already contains one ModActors element
+		 * with useful defaults (Spawn Immediately, respawn, singleton).
+		 * Preserve that struct as the prototype for every auto-discovered
+		 * actor instead of constructing zeroed entries.
+		 */
+		FStructOnScope Prototype(
+			StructProperty->Struct
+		);
+
+		const bool bHasPrototype =
+			ArrayHelper.Num() > 0;
+
+		if (bHasPrototype)
+		{
+			StructProperty->Struct->CopyScriptStruct(
+				Prototype.GetStructMemory(),
+				ArrayHelper.GetRawPtr(0)
+			);
+		}
+
+		ArrayHelper.EmptyValues();
+
+		for (UClass* ModActorClass : ModActorClasses)
+		{
+			if (!ModActorClass)
+			{
+				continue;
+			}
+
+			const int32 NewIndex =
+				ArrayHelper.AddValue();
+
+			void* ElementMemory =
+				ArrayHelper.GetRawPtr(NewIndex);
+
+			if (bHasPrototype)
+			{
+				StructProperty->Struct->CopyScriptStruct(
+					ElementMemory,
+					Prototype.GetStructMemory()
+				);
+			}
+
+			if (!SetStructClassValue(
+					ActorClassProperty,
+					ElementMemory,
+					ModActorClass))
+			{
+				ArrayHelper.RemoveValues(
+					NewIndex,
+					1
+				);
+
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	static bool PopulateGeneratedModDataAsset(
+		const FString& PluginName)
+	{
+		TSharedPtr<IPlugin> Plugin =
+			IPluginManager::Get().FindPlugin(PluginName);
+
+		if (!Plugin.IsValid())
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"Unable to populate mod metadata: "
+					"plugin %s was not found."
+				),
+				*PluginName
+			);
+
+			return false;
+		}
+
+		FString PluginContentPath =
+			Plugin->GetMountedAssetPath();
+
+		if (!PluginContentPath.EndsWith(TEXT("/")))
+		{
+			PluginContentPath += TEXT("/");
+		}
+
+		const FString DataAssetPackagePath =
+			PluginContentPath +
+			FString::Printf(
+				TEXT("DA_%s"),
+				*PluginName
+			);
+
+		const FString DataAssetObjectPath =
+			DataAssetPackagePath +
+			TEXT(".") +
+			FString::Printf(
+				TEXT("DA_%s"),
+				*PluginName
+			);
+
+		UObject* DataAsset =
+			FSoftObjectPath(
+				DataAssetObjectPath
+			).TryLoad();
+
+		if (!DataAsset)
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"No generated mod metadata Data Asset "
+					"was found at %s. Skipping auto-population."
+				),
+				*DataAssetObjectPath
+			);
+
+			return false;
+		}
+
+		const FPluginDescriptor& Descriptor =
+			Plugin->GetDescriptor();
+
+		const FString FriendlyModName =
+			Descriptor.FriendlyName.IsEmpty()
+				? PluginName
+				: Descriptor.FriendlyName;
+
+		const FString ModVersion =
+			Descriptor.VersionName.IsEmpty()
+				? TEXT("1.0.0")
+				: Descriptor.VersionName;
+
+		const FString ModDescription =
+			Descriptor.Description;
+
+		TArray<FString> Authors;
+
+		if (!Descriptor.CreatedBy.IsEmpty())
+		{
+			Authors.Add(Descriptor.CreatedBy);
+		}
+
+		FString PDMLVersion;
+
+		if (const TSharedPtr<IPlugin> PDMLPlugin =
+				IPluginManager::Get().FindPlugin(TEXT("PDML"));
+			PDMLPlugin.IsValid())
+		{
+			PDMLVersion =
+				PDMLPlugin->GetDescriptor().VersionName;
+		}
+
+		UClass* DataClass =
+			DataAsset->GetClass();
+
+		int32 FieldsUpdated = 0;
+
+		if (SetMetadataTextValue(
+				DataAsset,
+				FindMetadataProperty(
+					DataClass,
+					{ TEXT("ModID"), TEXT("Mod ID") }
+				),
+				PluginName))
+		{
+			++FieldsUpdated;
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"%s: could not set 'Mod ID' on %s."
+				),
+				*PluginName,
+				*DataAssetObjectPath
+			);
+		}
+
+		if (SetMetadataTextValue(
+				DataAsset,
+				FindMetadataProperty(
+					DataClass,
+					{
+						TEXT("ModVersion"),
+						TEXT("Mod Version")
+					}
+				),
+				ModVersion))
+		{
+			++FieldsUpdated;
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"%s: could not set 'Mod Version' on %s."
+				),
+				*PluginName,
+				*DataAssetObjectPath
+			);
+		}
+
+		if (SetMetadataEnumValue(
+				DataAsset,
+				FindMetadataProperty(
+					DataClass,
+					{
+						TEXT("ModEnvironment"),
+						TEXT("Mod Environment")
+					}
+				),
+				TEXT("Client")))
+		{
+			++FieldsUpdated;
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"%s: could not set Mod Environment to Client."
+				),
+				*PluginName
+			);
+		}
+
+		if (SetMetadataTextValue(
+				DataAsset,
+				FindMetadataProperty(
+					DataClass,
+					{ TEXT("ModName"), TEXT("Mod Name") }
+				),
+				FriendlyModName))
+		{
+			++FieldsUpdated;
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"%s: could not set 'Mod Name'."
+				),
+				*PluginName
+			);
+		}
+
+		if (SetMetadataStringArray(
+				DataAsset,
+				FindMetadataProperty(
+					DataClass,
+					{
+						TEXT("ModAuthors"),
+						TEXT("Mod Authors")
+					}
+				),
+				Authors))
+		{
+			++FieldsUpdated;
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"%s: could not set 'Mod Authors'."
+				),
+				*PluginName
+			);
+		}
+
+		if (SetMetadataTextValue(
+				DataAsset,
+				FindMetadataProperty(
+					DataClass,
+					{
+						TEXT("ModDescription"),
+						TEXT("Mod Description")
+					}
+				),
+				ModDescription))
+		{
+			++FieldsUpdated;
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"%s: could not set 'Mod Description'."
+				),
+				*PluginName
+			);
+		}
+
+		if (!PDMLVersion.IsEmpty())
+		{
+			if (SetMetadataTextValue(
+					DataAsset,
+					FindMetadataProperty(
+						DataClass,
+						{
+							TEXT("ModLoaderVersion"),
+							TEXT("Mod Loader Version")
+						}
+					),
+					PDMLVersion))
+			{
+				++FieldsUpdated;
+			}
+			else
+			{
+				UE_LOG(
+					LogAlpakit,
+					Warning,
+					TEXT(
+						"%s: could not set 'Mod Loader Version'."
+					),
+					*PluginName
+				);
+			}
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Warning,
+				TEXT(
+					"%s: PDML VersionName was unavailable; "
+					"Mod Loader Version was left unchanged."
+				),
+				*PluginName
+			);
+		}
+
+		const TArray<UClass*> ModActorClasses =
+			FindModActorClassesInPlugin(
+				PluginContentPath
+			);
+
+		FProperty* ModActorsProperty =
+			FindMetadataProperty(
+				DataClass,
+				{ TEXT("ModActors"), TEXT("Mod Actors") }
+			);
+
+		if (ModActorsProperty)
+		{
+			if (PopulateModActorsArray(
+					DataAsset,
+					ModActorsProperty,
+					ModActorClasses))
+			{
+				++FieldsUpdated;
+
+				UE_LOG(
+					LogAlpakit,
+					Display,
+					TEXT(
+						"%s: populated Mod Actors with "
+						"%d ModActorBase-derived Blueprint class(es)."
+					),
+					*PluginName,
+					ModActorClasses.Num()
+				);
+			}
+			else
+			{
+				UE_LOG(
+					LogAlpakit,
+					Warning,
+					TEXT(
+						"%s: found the Mod Actors property, "
+						"but could not populate its struct array."
+					),
+					*PluginName
+				);
+			}
+		}
+		else
+		{
+			UE_LOG(
+				LogAlpakit,
+				Verbose,
+				TEXT(
+					"%s: Data Asset has no Mod Actors property."
+				),
+				*PluginName
+			);
+		}
+
+		DataAsset->MarkPackageDirty();
+
+		UEditorAssetSubsystem* AssetSubsystem =
+			GEditor
+				? GEditor->GetEditorSubsystem<
+					UEditorAssetSubsystem>()
+				: nullptr;
+
+		if (!AssetSubsystem)
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"%s: EditorAssetSubsystem was unavailable; "
+					"generated metadata was not saved."
+				),
+				*PluginName
+			);
+
+			return false;
+		}
+
+		if (!AssetSubsystem->SaveAsset(
+				DataAssetPackagePath))
+		{
+			UE_LOG(
+				LogAlpakit,
+				Error,
+				TEXT(
+					"%s: failed to save populated Data Asset %s."
+				),
+				*PluginName,
+				*DataAssetPackagePath
+			);
+
+			return false;
+		}
+
+		UE_LOG(
+			LogAlpakit,
+			Display,
+			TEXT(
+				"%s: auto-populated generated mod metadata "
+				"Data Asset (%d fields/groups updated): %s"
+			),
+			*PluginName,
+			FieldsUpdated,
+			*DataAssetObjectPath
 		);
 
 		return true;
@@ -770,6 +1772,13 @@ void FModWizardDefinition::PluginCreated(const FString& PluginName, bool bWasSuc
 	UE_LOG(LogAlpakit, Log, TEXT("Created mod %s"), *PluginName);
 
 	RenameTemplateAssetsForMods(PluginName);
+
+	/*
+	 * The template assets now have their final names, so populate the
+	 * generated PDA_ModMeta instance from the .uplugin and discover any
+	 * ModActorBase-derived Blueprints under this mod.
+	 */
+	PopulateGeneratedModDataAsset(PluginName);
 }
 
 FString FModWizardDefinition::GetPluginFolderPath() const
