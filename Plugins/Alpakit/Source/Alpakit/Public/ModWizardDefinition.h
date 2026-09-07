@@ -34,6 +34,7 @@ public:
 	// End IPluginWizardDefinition interface
 
 	void RenameTemplateAssetsForMods(const FString& PluginName) const;
+	bool PopulateGeneratedModDataAssetForPlugin(const FString& PluginName) const;
 
 private:
 	/** Gets the folder for the specified template. */

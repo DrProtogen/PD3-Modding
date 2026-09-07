@@ -1,10 +1,12 @@
 #include "AlpakitModEntryList.h"
 #include "Alpakit.h"
 #include "AlpakitModEntry.h"
+#include "LegacyModImporter.h"
 #include "Interfaces/IPluginManager.h"
 #include "Slate.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Async/Async.h"
 
 #define LOCTEXT_NAMESPACE "AlpakitModListEntry"
 
@@ -29,6 +31,12 @@ void SAlpakitModEntryList::Construct(const FArguments& Args) {
                 .OnClicked(this,& SAlpakitModEntryList::UncheckAllMods)
             ]
             + SHorizontalBox::Slot().FillWidth(1.0f)
+            + SHorizontalBox::Slot().AutoWidth()[
+                SNew(SButton)
+                .Text(LOCTEXT("ImportLegacyMod", "Import Legacy Mod"))
+                .ToolTipText(LOCTEXT("ImportLegacyModTooltip", "Migrate an uncooked UE4 ModLoader mod folder into a PDML/Alpakit mod plugin."))
+                .OnClicked(this, &SAlpakitModEntryList::ImportLegacyMod)
+            ]
             + SHorizontalBox::Slot().AutoWidth()[
                 SNew(SButton)
                 .Text(LOCTEXT("CreateMod", "Create Mod"))
@@ -79,14 +87,67 @@ bool DoesPluginHaveRuntime(const IPlugin& Plugin) {
 
 void SAlpakitModEntryList::LoadMods() {
     Mods.Empty();
-    const TArray<TSharedRef<IPlugin>> EnabledPlugins = IPluginManager::Get().GetEnabledPlugins();
+
     const FString ProjectModsDir =
         FPaths::ConvertRelativePathToFull(
             FPaths::Combine(
                 FPaths::ProjectDir(),
                 TEXT("Mods")));
 
-    for (TSharedRef<IPlugin> Plugin : EnabledPlugins) {
+    /*
+     * /Mods is a custom Alpakit plugin root rather than Unreal's normal
+     * /Plugins directory. Make it an active IPluginManager search path for the
+     * running editor before doing any discovery.
+     */
+    IPluginManager::Get().AddPluginSearchPath(
+        ProjectModsDir,
+        false);
+
+    /*
+     * A newly-created legacy mod can exist on disk before Unreal considers it
+     * "enabled" in the current session. Explicitly register each descriptor
+     * found under /Mods; AddToPluginsList() is specifically intended for
+     * adding one plugin without relying on a full discovery pass.
+     */
+    TArray<FString> ModDescriptorFiles;
+    IFileManager::Get().FindFilesRecursive(
+        ModDescriptorFiles,
+        *ProjectModsDir,
+        TEXT("*.uplugin"),
+        true,
+        false,
+        false);
+
+    for (const FString& DescriptorFile : ModDescriptorFiles)
+    {
+        FText AddFailure;
+        if (!IPluginManager::Get().AddToPluginsList(
+                DescriptorFile,
+                &AddFailure))
+        {
+            UE_LOG(
+                LogAlpakit,
+                Warning,
+                TEXT(
+                    "Alpakit could not register mod descriptor '%s': %s"
+                ),
+                *DescriptorFile,
+                *AddFailure.ToString());
+        }
+    }
+
+    /*
+     * Do not use GetEnabledPlugins() for the Alpakit browser. A just-created
+     * plugin can be fully discovered and mounted but not yet reflected in the
+     * enabled-plugin cache until project state is flushed/reloaded.
+     *
+     * We only render entries physically under <Project>/Mods anyway, so
+     * GetDiscoveredPlugins() is the correct source for this UI.
+     */
+    TArray<TSharedRef<IPlugin>> CandidatePlugins =
+        IPluginManager::Get().GetDiscoveredPlugins();
+
+    for (TSharedRef<IPlugin> Plugin : CandidatePlugins) {
         /*
          * Remove deleted mods from the Alpakit list immediately, even if
          * IPluginManager still has a stale in-memory entry for a frame.
@@ -116,7 +177,8 @@ void SAlpakitModEntryList::LoadMods() {
 
         //Only include project plugins for now
         //TODO make sure UAT task supports engine plugins
-        if ((bShowEngine && Plugin->GetType() == EPluginType::Engine) ||
+        if (bLivesInProjectMods ||
+            (bShowEngine && Plugin->GetType() == EPluginType::Engine) ||
             (bShowProject && Plugin->GetType() == EPluginType::Project) ||
             Plugin->GetType() == EPluginType::Mod) {
             
@@ -263,6 +325,79 @@ FReply SAlpakitModEntryList::UncheckAllMods() {
         }
         ModEntry->SetSelected(false);
     }
+    return FReply::Handled();
+}
+
+FReply SAlpakitModEntryList::ImportLegacyMod()
+{
+    FString ImportedModName;
+    FString ImportReport;
+
+    if (FLegacyModImporter::ImportFromFolderDialog(
+            ImportedModName,
+            ImportReport))
+    {
+        /*
+         * FPluginUtils::CreateAndLoadNewPlugin() gives the importer a valid
+         * plugin immediately, but IPluginManager::GetEnabledPlugins() can still
+         * be one refresh/frame behind when the modal migration dialog returns.
+         *
+         * Force PluginManager discovery first, then rebuild the Alpakit rows.
+         */
+        const FString ProjectModsDir =
+            FPaths::ConvertRelativePathToFull(
+                FPaths::Combine(
+                    FPaths::ProjectDir(),
+                    TEXT("Mods")));
+
+        IPluginManager::Get().AddPluginSearchPath(
+            ProjectModsDir,
+            true);
+
+        LoadMods();
+
+        /*
+         * Do a second refresh on the next game-thread task as well. This covers
+         * the UE5.5 case where the plugin descriptor/search-path update is
+         * finalized after the import call unwinds.
+         */
+        TWeakPtr<SAlpakitModEntryList> WeakEntryList =
+            SharedThis(this);
+
+        AsyncTask(
+            ENamedThreads::GameThread,
+            [WeakEntryList, ImportedModName]()
+            {
+                const TSharedPtr<SAlpakitModEntryList> PinnedThis =
+                    WeakEntryList.Pin();
+
+                if (!PinnedThis.IsValid())
+                {
+                    return;
+                }
+
+                const FString ProjectModsDir =
+                    FPaths::ConvertRelativePathToFull(
+                        FPaths::Combine(
+                            FPaths::ProjectDir(),
+                            TEXT("Mods")));
+
+                IPluginManager::Get().AddPluginSearchPath(
+                    ProjectModsDir,
+                    true);
+
+                PinnedThis->LoadMods();
+
+                UE_LOG(
+                    LogAlpakit,
+                    Display,
+                    TEXT(
+                        "Legacy import UI refresh complete for mod '%s'."
+                    ),
+                    *ImportedModName);
+            });
+    }
+
     return FReply::Handled();
 }
 

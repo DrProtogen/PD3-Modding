@@ -1644,6 +1644,11 @@ void FModWizardDefinition::RenameTemplateAssetsForMods(const FString& PluginName
 }
 
 
+bool FModWizardDefinition::PopulateGeneratedModDataAssetForPlugin(const FString& PluginName) const
+{
+	return PopulateGeneratedModDataAsset(PluginName);
+}
+
 void FModWizardDefinition::PluginCreated(const FString& PluginName, bool bWasSuccessful) const
 {
 	if(!bWasSuccessful)

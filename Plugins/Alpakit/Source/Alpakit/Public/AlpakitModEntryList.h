@@ -44,4 +44,5 @@ private:
 	FReply CheckAllMods();
 	FReply UncheckAllMods();
 	FReply CreateMod();
+	FReply ImportLegacyMod();
 };

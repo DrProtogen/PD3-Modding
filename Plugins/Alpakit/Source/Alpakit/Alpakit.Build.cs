@@ -31,7 +31,8 @@ public class Alpakit : ModuleRules
 			"AssetRegistry",
 			"AssetTools",
 			"EditorScriptingUtilities",
-			"ApplicationCore"
+			"ApplicationCore",
+			"PluginUtils"
 		});
 	}
 }
