@@ -1279,9 +1279,9 @@ namespace CrimeForge.Automation
 			/*
 			 * PASS 1's plugin DLC normally produces something like:
 			 *
-			 *     Content/Paks/Windows/PDML-Windows.pak
-			 *     Content/Paks/Windows/PDML-Windows.utoc
-			 *     Content/Paks/Windows/PDML-Windows.ucas
+			 *     Content/Paks/Windows/PDMLPAYDAY3-Windows.pak
+			 *     Content/Paks/Windows/PDMLPAYDAY3-Windows.utoc
+			 *     Content/Paks/Windows/PDMLPAYDAY3-Windows.ucas
 			 *
 			 * Return the path relative to Content/Paks WITHOUT the extension:
 			 *
@@ -1370,13 +1370,16 @@ namespace CrimeForge.Automation
 			return baseName + "_P";
 		}
 
-		private static string GetPatchContainerFileName(string filePath)
+		private static string GetPatchContainerFileName(
+			string filePath,
+			string pluginName)
 		{
 			var baseName = Path.GetFileNameWithoutExtension(filePath);
 			var extension = Path.GetExtension(filePath);
 
-			// IoStore partition files use names such as Foo-Windows_s1.ucas.
-			// Insert _P before the partition suffix, not after it.
+			// IoStore partition files use names such as
+			// FooPAYDAY3-Windows_s1.ucas. Preserve only the partition suffix;
+			// the final public mod filename is always <PluginName>_P.
 			string partitionSuffix = "";
 			var partitionIndex = baseName.LastIndexOf(
 				"_s",
@@ -1397,15 +1400,18 @@ namespace CrimeForge.Automation
 				if (allDigits)
 				{
 					partitionSuffix = baseName.Substring(partitionIndex);
-					baseName = baseName.Substring(0, partitionIndex);
 				}
 			}
 
-			return GetPatchContainerBaseName(baseName) + partitionSuffix + extension;
+			return
+				GetPatchContainerBaseName(pluginName) +
+				partitionSuffix +
+				extension;
 		}
 
 		private static void ApplyPatchSuffixToPluginContainers(
-			string pluginDirectory)
+			string pluginDirectory,
+			string pluginName)
 		{
 			var paksDirectory = Path.Combine(
 				pluginDirectory,
@@ -1432,7 +1438,11 @@ namespace CrimeForge.Automation
 					continue;
 				}
 
-				var desiredName = GetPatchContainerFileName(file);
+				var desiredName =
+					GetPatchContainerFileName(
+						file,
+						pluginName
+					);
 				var currentName = Path.GetFileName(file);
 
 				if (string.Equals(
@@ -1456,7 +1466,7 @@ namespace CrimeForge.Automation
 				File.Move(file, destination);
 
 				LogInformation(
-					"Applied PAYDAY 3 _P suffix: {0} -> {1}",
+					"Applied CrimeForge container name: {0} -> {1}",
 					currentName,
 					desiredName
 				);
@@ -1745,9 +1755,10 @@ namespace CrimeForge.Automation
 			 *
 			 * If PASS 1 was:
 			 *
-			 *     Content/Paks/Windows/PDML-Windows.utoc
+			 *     Content/Paks/Windows/PDMLPAYDAY3-Windows.utoc
 			 *
-			 * PASS 2 will replace it at exactly that path.
+			 * PASS 2 keeps the same directory, but the final public container
+			 * basename is normalized to PDML_P.
 			 */
 			var relativeContainerBase =
 				GetPass1ContainerBaseRelativePath(
@@ -1774,10 +1785,10 @@ namespace CrimeForge.Automation
 				Path.GetFileName(relativeContainerBase);
 
 			var targetBaseName =
-				GetPatchContainerBaseName(originalBaseName);
+				GetPatchContainerBaseName(pluginName);
 
 			LogInformation(
-				"Final PAYDAY 3 container base name: {0} -> {1}",
+				"Final CrimeForge container base name: {0} -> {1}",
 				originalBaseName,
 				targetBaseName
 			);
@@ -1962,7 +1973,7 @@ namespace CrimeForge.Automation
 			    !FileExists(expectedUcas))
 			{
 				throw new AutomationException(
-					"Final _P container verification failed. Expected: {0}, {1}, {2}",
+					"Final CrimeForge container verification failed. Expected: {0}, {1}, {2}",
 					expectedPak,
 					expectedUtoc,
 					expectedUcas
@@ -1970,7 +1981,7 @@ namespace CrimeForge.Automation
 			}
 
 			LogInformation(
-				"Verified final _P container set: {0}",
+				"Verified final CrimeForge container set: {0}",
 				targetBaseName
 			);
 		}
@@ -2198,7 +2209,11 @@ namespace CrimeForge.Automation
 						GetPluginPathRelativeToStageRoot(projectParams)
 					);
 
-					ApplyPatchSuffixToPluginContainers(stagedPluginDirectory);
+					ApplyPatchSuffixToPluginContainers(
+						stagedPluginDirectory,
+						projectParams.DLCFile
+							.GetFileNameWithoutAnyExtensions()
+					);
 				}
 
 				result.SetPhase("Archive mod");
