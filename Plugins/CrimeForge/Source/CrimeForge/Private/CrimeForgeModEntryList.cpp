@@ -7,56 +7,78 @@
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "Async/Async.h"
+#include "Widgets/Layout/SWrapBox.h"
 
 #define LOCTEXT_NAMESPACE "CrimeForgeModListEntry"
 
 void SCrimeForgeModEntryList::Construct(const FArguments& Args) {
     ChildSlot[
         SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight()[
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(FMargin(0.0f, 2.0f, 0.0f, 5.0f))
+        [
             SNew(SHorizontalBox)
-            + SHorizontalBox::Slot().AutoWidth()[
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 3.0f, 0.0f)
+            [
                 SNew(SButton)
                 .Text(LOCTEXT("PackageModCrimeForgeAll", "CrimeForge Selected!"))
-                .OnClicked(this,& SCrimeForgeModEntryList::PackageAllMods)
+                .OnClicked(this, &SCrimeForgeModEntryList::PackageAllMods)
             ]
-            + SHorizontalBox::Slot().AutoWidth()[
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 3.0f, 0.0f)
+            [
                 SNew(SButton)
                 .Text(LOCTEXT("PackageModCheckAll", "Check All"))
-                .OnClicked(this,& SCrimeForgeModEntryList::CheckAllMods)
+                .OnClicked(this, &SCrimeForgeModEntryList::CheckAllMods)
             ]
-            + SHorizontalBox::Slot().AutoWidth()[
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
                 SNew(SButton)
                 .Text(LOCTEXT("PackageModUncheckAll", "Check None"))
-                .OnClicked(this,& SCrimeForgeModEntryList::UncheckAllMods)
+                .OnClicked(this, &SCrimeForgeModEntryList::UncheckAllMods)
             ]
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-            + SHorizontalBox::Slot().AutoWidth()[
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 3.0f, 0.0f)
+            [
                 SNew(SButton)
                 .Text(LOCTEXT("ImportLegacyMod", "Import Legacy Mod"))
                 .ToolTipText(LOCTEXT("ImportLegacyModTooltip", "Migrate an uncooked UE4 ModLoader mod folder into a PDML/CrimeForge mod plugin."))
                 .OnClicked(this, &SCrimeForgeModEntryList::ImportLegacyMod)
             ]
-            + SHorizontalBox::Slot().AutoWidth()[
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
                 SNew(SButton)
                 .Text(LOCTEXT("CreateMod", "Create Mod"))
-                .OnClicked(this,& SCrimeForgeModEntryList::CreateMod)
+                .OnClicked(this, &SCrimeForgeModEntryList::CreateMod)
             ]
         ]
-        + SVerticalBox::Slot().FillHeight(1.0f)[
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        .Padding(FMargin(0.0f, 1.0f, 0.0f, 0.0f))
+        [
             SNew(SScrollBox)
             .Orientation(Orient_Vertical)
             .ScrollBarAlwaysVisible(true)
             + SScrollBox::Slot()[
-                SAssignNew(ModList, SListView<TSharedRef<IPlugin>>)
-                .SelectionMode(ESelectionMode::None)
-                .ListItemsSource(&FilteredMods)
-                .OnGenerateRow_Lambda(
-                    [this](TSharedRef<IPlugin> Mod, const TSharedRef<STableViewBase>& List) {
-                        return SNew(STableRow<TSharedRef<IPlugin>>, List)[
-                            SNew(SCrimeForgeModEntry, Mod, SharedThis(this))
-                        ];
-                    })
+                SAssignNew(ModGrid, SWrapBox)
+                .UseAllottedSize(true)
+                .InnerSlotPadding(FVector2D(4.0f, 4.0f))
+                .HAlign(HAlign_Left)
             ]
         ]
     ];
@@ -229,7 +251,36 @@ void SCrimeForgeModEntryList::Filter(const FString& InFilter) {
         }
     }
 
-    ModList->RequestListRefresh();
+    RebuildModGrid();
+}
+
+void SCrimeForgeModEntryList::RebuildModGrid()
+{
+    VisibleEntries.Reset();
+
+    if (!ModGrid.IsValid())
+    {
+        return;
+    }
+
+    ModGrid->ClearChildren();
+
+    for (const TSharedRef<IPlugin>& Mod : FilteredMods)
+    {
+        TSharedRef<SCrimeForgeModEntry> Entry =
+            SNew(
+                SCrimeForgeModEntry,
+                Mod,
+                SharedThis(this));
+
+        VisibleEntries.Add(Entry);
+
+        ModGrid->AddSlot()
+        .Padding(FMargin(4.0f))
+        [
+            Entry
+        ];
+    }
 }
 
 FString SCrimeForgeModEntryList::GetLastFilter() const {
@@ -257,34 +308,19 @@ FReply SCrimeForgeModEntryList::PackageAllMods() {
 
     UE_LOG(LogCrimeForge, Display, TEXT("CrimeForge Selected!"));
 
-    for (TSharedRef<IPlugin> Mod : FilteredMods) {
-        UE_LOG(LogCrimeForge, Display, TEXT("Collecting Plugin %s!"), *Mod->GetName());
-
-        TSharedPtr<ITableRow> TableRow = ModList->WidgetFromItem(Mod);
-        if (!TableRow.IsValid()) {
-            UE_LOG(LogCrimeForge, Display, TEXT("TableRow not found!"));
+    for (const TSharedPtr<SCrimeForgeModEntry>& ModEntry : VisibleEntries) {
+        if (!ModEntry.IsValid() || !ModEntry->IsSelected()) {
             continue;
         }
 
-        TSharedPtr<SCrimeForgeModEntry> ModEntry = StaticCastSharedPtr<SCrimeForgeModEntry>(TableRow->GetContent());
-        if (!ModEntry.IsValid()) {
-            UE_LOG(LogCrimeForge, Display, TEXT("TableRow content is not valid!"));
-            continue;
-        }
-
-        if(!ModEntry->IsSelected()) {
-            UE_LOG(LogCrimeForge, Display, TEXT("Plugin is not selected: %s"), * Mod->GetName());
-            continue;
-        }
-
-        if (!First) {
-            First = ModEntry.ToSharedRef();
+        if (!First.IsValid()) {
+            First = ModEntry;
         } else {
-            NextEntries.Add(ModEntry.ToSharedRef());
+            NextEntries.Add(ModEntry);
         }
     }
 
-    if (First) {
+    if (First.IsValid()) {
         First->PackageMod(NextEntries);
     }
 
@@ -292,39 +328,22 @@ FReply SCrimeForgeModEntryList::PackageAllMods() {
 }
 
 FReply SCrimeForgeModEntryList::CheckAllMods() {
-    for (TSharedRef<IPlugin> Mod : FilteredMods) {
-        TSharedPtr<ITableRow> TableRow = ModList->WidgetFromItem(Mod);
-        if (!TableRow.IsValid()) {
-            UE_LOG(LogCrimeForge, Display, TEXT("TableRow not found!"));
-            continue;
+    for (const TSharedPtr<SCrimeForgeModEntry>& ModEntry : VisibleEntries) {
+        if (ModEntry.IsValid()) {
+            ModEntry->SetSelected(true);
         }
-
-        TSharedPtr<SCrimeForgeModEntry> ModEntry = StaticCastSharedPtr<SCrimeForgeModEntry>(TableRow->GetContent());
-        if (!ModEntry.IsValid()) {
-            UE_LOG(LogCrimeForge, Display, TEXT("TableRow content is not valid!"));
-            continue;
-        }
-        ModEntry->SetSelected(true);
     }
+
     return FReply::Handled();
 }
 
-
 FReply SCrimeForgeModEntryList::UncheckAllMods() {
-    for (TSharedRef<IPlugin> Mod : FilteredMods) {
-        TSharedPtr<ITableRow> TableRow = ModList->WidgetFromItem(Mod);
-        if (!TableRow.IsValid()) {
-            UE_LOG(LogCrimeForge, Display, TEXT("TableRow not found!"));
-            continue;
+    for (const TSharedPtr<SCrimeForgeModEntry>& ModEntry : VisibleEntries) {
+        if (ModEntry.IsValid()) {
+            ModEntry->SetSelected(false);
         }
-
-        TSharedPtr<SCrimeForgeModEntry> ModEntry = StaticCastSharedPtr<SCrimeForgeModEntry>(TableRow->GetContent());
-        if (!ModEntry.IsValid()) {
-            UE_LOG(LogCrimeForge, Display, TEXT("TableRow content is not valid!"));
-            continue;
-        }
-        ModEntry->SetSelected(false);
     }
+
     return FReply::Handled();
 }
 

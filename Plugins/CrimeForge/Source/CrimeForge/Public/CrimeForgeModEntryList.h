@@ -33,7 +33,10 @@ class SCrimeForgeModEntryList : public SCompoundWidget {
 
 	void OnNewPluginCreated(IPlugin& Plugin);
 private:
-	TSharedPtr<SListView<TSharedRef<IPlugin>>> ModList;
+	void RebuildModGrid();
+
+	TSharedPtr<class SWrapBox> ModGrid;
+	TArray<TSharedPtr<class SCrimeForgeModEntry>> VisibleEntries;
 	TArray<TSharedRef<IPlugin>> Mods;
 	TArray<TSharedRef<IPlugin>> FilteredMods;
 	FString LastFilter;

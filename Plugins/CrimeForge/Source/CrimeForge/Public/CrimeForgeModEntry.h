@@ -1,6 +1,7 @@
 #pragma once
 #include "CrimeForgeModEntryList.h"
 #include "Interfaces/IPluginManager.h"
+#include "Styling/SlateColor.h"
 
 /**
  * Entry of a mod within the mod list of the crimeforge window
@@ -14,12 +15,18 @@ class SCrimeForgeModEntry : public SCompoundWidget {
     void PackageMod(const TArray<TSharedPtr<SCrimeForgeModEntry>>& NextEntries) const;
     bool RunPreflightValidation() const;
 
-    FReply OnTogglePALInspector();
+    FReply OnOpenInformation();
+    FReply OnOpenModContent();
     FReply OnViewPALAssets();
     FReply OnRefreshPALInspector();
-    FText GetPALInspectorButtonText() const;
+    FReply OnFixInformationIssues();
+
+    void RefreshPALInspectorState();
     FText GetPALInspectorSummaryText() const;
-    EVisibility GetPALInspectorVisibility() const;
+    FSlateColor GetInformationButtonColor() const;
+    FText GetInformationButtonTooltip() const;
+    EVisibility GetFixInformationVisibility() const;
+    bool CanAutoFixInformationIssues() const;
     void OnEnableCheckboxChanged(ECheckBoxState NewState);
 
     void OnEditMod();
@@ -41,9 +48,15 @@ private:
     TSharedPtr<SCrimeForgeModEntryList> Owner;
     TSharedPtr<class SCheckBox> Checkbox;
 
-    /** Inline PAL/chunk inspector state. */
-    bool bPALInspectorExpanded = false;
+    /** PAL/chunk information shown by the Information window. */
     FText PALInspectorSummary;
+
+    /** Cached inspector severity used to tint the Information button. */
+    bool bInformationHasWarnings = false;
+    bool bInformationHasAutoFixableWarnings = false;
+
+    /** Brush for the mod's Icon128.png, or CrimeForge128.png as fallback. */
+    TSharedPtr<struct FSlateDynamicImageBrush> ModIconBrush;
     
     /** Dialog for editing mod properties */
     TSharedPtr<SWindow> PropertiesWindow;

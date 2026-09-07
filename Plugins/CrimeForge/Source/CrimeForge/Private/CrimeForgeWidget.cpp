@@ -34,45 +34,29 @@ void SCrimeForgeWidget::Construct(const FArguments& InArgs) {
         +SVerticalBox::Slot().AutoHeight()[
             DetailsView.ToSharedRef()
         ]
-        +SVerticalBox::Slot().AutoHeight()[
-            SNew(SHorizontalBox)
-            +SHorizontalBox::Slot().FillWidth(1)[
-                SNew(SEditableTextBox)
-                .HintText(LOCTEXT("SearchHint", "Search Plugin..."))
-                .OnTextChanged_Lambda([this](const FText& InText) {
-                    this->ModList->Filter(InText.ToString());
-                })
+        +SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)[
+            SNew(SBorder)
+            .Padding(FMargin(6.0f, 3.0f))
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("ModsSectionHeader", "Mods"))
+                .Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))
             ]
-            +SHorizontalBox::Slot().AutoWidth()[
-                SNew(SSpacer)
-                .Size(FVector2D(20.0f, 10.0f))
-            ]
-            +SHorizontalBox::Slot().AutoWidth()[
-                SNew(SCheckBox)
-                .Content()[
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("ShowEnginePlugins", "Show Engine Plugins"))
-                ]
-                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState) {
-                    this->ModList->SetShowEngine(InState == ECheckBoxState::Checked);
-                })
-            ]
-            +SHorizontalBox::Slot().AutoWidth()[
-                SNew(SSpacer)
-                .Size(FVector2D(10.0f, 10.0f))
-            ]
-            +SHorizontalBox::Slot().AutoWidth()[
-              SNew(SCheckBox)
-              .Content()[
-                  SNew(STextBlock)
-                  .Text(LOCTEXT("ShowProjectPlugins", "Show Project Plugins"))
-              ]
-              .OnCheckStateChanged_Lambda([this](ECheckBoxState InState) {
-                  this->ModList->SetShowProject(InState == ECheckBoxState::Checked);
-              })
-          ]
         ]
-        +SVerticalBox::Slot().FillHeight(1).Padding(3)[
+        +SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(FMargin(5.0f, 4.0f, 5.0f, 3.0f))
+        [
+            SNew(SEditableTextBox)
+            .HintText(LOCTEXT("SearchHint", "Search Mods..."))
+            .OnTextChanged_Lambda([this](const FText& InText) {
+                this->ModList->Filter(InText.ToString());
+            })
+        ]
+        +SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        .Padding(FMargin(5.0f, 2.0f, 5.0f, 5.0f))
+        [
             SAssignNew(ModList, SCrimeForgeModEntryList)
         ]
     ];

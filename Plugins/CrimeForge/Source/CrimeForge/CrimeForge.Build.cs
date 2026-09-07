@@ -32,7 +32,9 @@ public class CrimeForge : ModuleRules
 			"AssetTools",
 			"EditorScriptingUtilities",
 			"ApplicationCore",
-			"PluginUtils"
+			"PluginUtils",
+			"ContentBrowser",
+			"ToolMenus"
 		});
 	}
 }

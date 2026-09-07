@@ -11,10 +11,13 @@
 #include "IUATHelperModule.h"
 #include "Engine/PrimaryAssetLabel.h"
 #include "EditorAssetLibrary.h"
+#include "Editor.h"
+#include "Subsystems/EditorAssetSubsystem.h"
 #include "Modules/ModuleManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "Misc/PackageName.h"
+#include "UObject/Package.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/AssetManagerSettings.h"
@@ -30,6 +33,11 @@
 #include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformMisc.h"
+#include "ContentBrowserModule.h"
+#include "IContentBrowserSingleton.h"
+#include "Brushes/SlateDynamicImageBrush.h"
+#include "Styling/AppStyle.h"
+#include "Styling/CoreStyle.h"
 
 #define LOCTEXT_NAMESPACE "CrimeForgeModListEntry"
 
@@ -1197,6 +1205,9 @@ namespace
 		bool bPALFound = false;
 		bool bRuntimeLabel = false;
 		bool bLabelAssetsInMyDirectory = false;
+		bool bIncludeRedirectors = false;
+		bool bApplyRecursively = false;
+		bool bAlwaysCook = false;
 		bool bTwoStagePackaging = false;
 		bool bAssetManagerDirectoryRegistered = false;
 		bool bPALSpecificAssetRegistered = false;
@@ -1302,6 +1313,13 @@ namespace
 				Label->bIsRuntimeLabel;
 			Data.bLabelAssetsInMyDirectory =
 				Label->bLabelAssetsInMyDirectory;
+			Data.bIncludeRedirectors =
+				Label->bIncludeRedirectors;
+			Data.bApplyRecursively =
+				Label->Rules.bApplyRecursively;
+			Data.bAlwaysCook =
+				Label->Rules.CookRule ==
+					EPrimaryAssetCookRule::AlwaysCook;
 			Data.ChunkId =
 				Label->Rules.ChunkId;
 
@@ -1452,6 +1470,256 @@ namespace
 		SortInspectionPaths(Data);
 		return Data;
 	}
+
+	int32 CountPALInspectionWarnings(
+		const FCrimeForgePALInspectionData& Data)
+	{
+		if (!Data.bPALFound)
+		{
+			return 1;
+		}
+
+		int32 WarningCount = 0;
+		WarningCount += Data.bRuntimeLabel ? 0 : 1;
+		WarningCount += Data.bLabelAssetsInMyDirectory ? 0 : 1;
+		WarningCount += Data.bIncludeRedirectors ? 0 : 1;
+		WarningCount += Data.bApplyRecursively ? 0 : 1;
+		WarningCount += Data.bAlwaysCook ? 0 : 1;
+		WarningCount += Data.ChunkId >= 0 ? 0 : 1;
+		WarningCount += Data.bAssetManagerDirectoryRegistered ? 0 : 1;
+		WarningCount += Data.bPALSpecificAssetRegistered ? 0 : 1;
+		WarningCount += Data.MissingExplicitReferences.Num() > 0 ? 1 : 0;
+		return WarningCount;
+	}
+
+	bool HasAutoFixablePALInspectionWarnings(
+		const FCrimeForgePALInspectionData& Data)
+	{
+		return
+			!Data.bPALFound ||
+			!Data.bRuntimeLabel ||
+			!Data.bLabelAssetsInMyDirectory ||
+			!Data.bIncludeRedirectors ||
+			!Data.bApplyRecursively ||
+			!Data.bAlwaysCook ||
+			Data.ChunkId < 0 ||
+			!Data.bAssetManagerDirectoryRegistered ||
+			!Data.bPALSpecificAssetRegistered;
+	}
+
+	void AppendPALInspectionIssues(
+		const FCrimeForgePALInspectionData& Data,
+		FString& InOutText)
+	{
+		TArray<FString> Issues;
+
+		if (!Data.bPALFound)
+		{
+			Issues.Add(
+				FString::Printf(
+					TEXT("Primary Asset Label is missing: %s"),
+					*Data.PALPackagePath));
+		}
+		else
+		{
+			if (!Data.bRuntimeLabel)
+			{
+				Issues.Add(TEXT("PAL is not marked as a Runtime Label."));
+			}
+
+			if (!Data.bLabelAssetsInMyDirectory)
+			{
+				Issues.Add(TEXT("PAL is not labeling assets in its directory."));
+			}
+
+			if (!Data.bIncludeRedirectors)
+			{
+				Issues.Add(TEXT("PAL is not including redirectors."));
+			}
+
+			if (!Data.bApplyRecursively)
+			{
+				Issues.Add(TEXT("PAL rules are not recursive."));
+			}
+
+			if (!Data.bAlwaysCook)
+			{
+				Issues.Add(TEXT("PAL Cook Rule is not Always Cook."));
+			}
+
+			if (Data.ChunkId < 0)
+			{
+				Issues.Add(TEXT("PAL Chunk ID is unset."));
+			}
+		}
+
+		if (!Data.bAssetManagerDirectoryRegistered)
+		{
+			Issues.Add(
+				FString::Printf(
+					TEXT("Asset Manager directory registration is missing for %s."),
+					*Data.PluginMountPath));
+		}
+
+		if (!Data.bPALSpecificAssetRegistered)
+		{
+			Issues.Add(TEXT("Asset Manager Specific Asset registration for the PAL is missing."));
+		}
+
+		if (Data.MissingExplicitReferences.Num() > 0)
+		{
+			Issues.Add(
+				FString::Printf(
+					TEXT("%d explicit PAL reference(s) point to missing packages. These are not removed automatically."),
+					Data.MissingExplicitReferences.Num()));
+		}
+
+		if (Issues.Num() == 0)
+		{
+			return;
+		}
+
+		InOutText += TEXT("\n\nIssues:");
+		for (const FString& Issue : Issues)
+		{
+			InOutText += TEXT("\n  - ") + Issue;
+		}
+	}
+
+	bool CreateOrRepairCrimeForgePAL(
+		IPlugin& Plugin,
+		const FCrimeForgePALInspectionData& ExistingData,
+		FString& OutResult)
+	{
+		UPrimaryAssetLabel* Label =
+			Cast<UPrimaryAssetLabel>(
+				UEditorAssetLibrary::LoadAsset(
+					ExistingData.PALPackagePath));
+
+		bool bCreatedPAL = false;
+
+		if (!Label)
+		{
+			UPackage* Package =
+				CreatePackage(
+					*ExistingData.PALPackagePath);
+
+			if (!Package)
+			{
+				OutResult =
+					FString::Printf(
+						TEXT("Unable to create package %s."),
+						*ExistingData.PALPackagePath);
+				return false;
+			}
+
+			const FString PALAssetName =
+				FString::Printf(
+					TEXT("PAL_%s"),
+					*ExistingData.PluginName);
+
+			Label =
+				NewObject<UPrimaryAssetLabel>(
+					Package,
+					*PALAssetName,
+					RF_Public |
+					RF_Standalone |
+					RF_Transactional);
+
+			if (!Label)
+			{
+				OutResult =
+					FString::Printf(
+						TEXT("Unable to create %s."),
+						*ExistingData.PALObjectPath);
+				return false;
+			}
+
+			FAssetRegistryModule::AssetCreated(Label);
+			bCreatedPAL = true;
+		}
+
+		Label->Modify();
+		Label->bIsRuntimeLabel = true;
+		Label->bLabelAssetsInMyDirectory = true;
+		Label->bIncludeRedirectors = true;
+		Label->Rules.bApplyRecursively = true;
+		Label->Rules.CookRule =
+			EPrimaryAssetCookRule::AlwaysCook;
+
+		if (Label->Rules.ChunkId < 0)
+		{
+			Label->Rules.ChunkId = 333;
+		}
+
+		if (bCreatedPAL)
+		{
+			Label->Rules.Priority = 333;
+		}
+
+		const FString DataAssetObjectPath =
+			FString::Printf(
+				TEXT("/%s/DA_%s.DA_%s"),
+				*ExistingData.PluginName,
+				*ExistingData.PluginName,
+				*ExistingData.PluginName);
+
+		const FSoftObjectPath DataAssetPath(
+			DataAssetObjectPath);
+
+		if (DoesSoftReferencePackageExist(DataAssetPath))
+		{
+			const bool bAlreadyExplicit =
+				Label->ExplicitAssets.ContainsByPredicate(
+					[&DataAssetPath](
+						const TSoftObjectPtr<UObject>& Existing)
+					{
+						return
+							Existing.ToSoftObjectPath() ==
+							DataAssetPath;
+					});
+
+			if (!bAlreadyExplicit)
+			{
+				Label->ExplicitAssets.Add(
+					TSoftObjectPtr<UObject>(
+						DataAssetPath));
+			}
+		}
+
+		Label->MarkPackageDirty();
+
+		if (!UEditorAssetLibrary::SaveLoadedAsset(
+				Label,
+				false))
+		{
+			OutResult =
+				FString::Printf(
+					TEXT("PAL was changed but could not be saved: %s"),
+					*ExistingData.PALPackagePath);
+			return false;
+		}
+
+		FCrimeForgeModule& CrimeForgeModule =
+			FModuleManager::LoadModuleChecked<
+				FCrimeForgeModule>(
+				TEXT("CrimeForge"));
+
+		CrimeForgeModule.EnsureAssetManagerRegistrationForPlugin(
+			Plugin);
+
+		OutResult =
+			bCreatedPAL
+				? FString::Printf(
+					TEXT("Created and configured %s."),
+					*ExistingData.PALObjectPath)
+				: FString::Printf(
+					TEXT("Repaired %s."),
+					*ExistingData.PALObjectPath);
+
+		return true;
+	}
+
 
 	FString BuildPALAssetReport(
 		const FCrimeForgePALInspectionData& Data)
@@ -1951,282 +2219,473 @@ void SCrimeForgeModEntry::Construct(
 				PluginName,
 				false));
 
+	/*
+	 * CrimeForge mods live under <Project>/Mods rather than Unreal's normal
+	 * <Project>/Plugins root. Use the physical CrimeForge mod directory as the
+	 * authoritative icon location instead of relying on IPlugin::GetBaseDir(),
+	 * which can point at a discovered/search-path representation that is not the
+	 * directory the mod was actually created in during the current editor run.
+	 *
+	 * Expected path:
+	 *   <Project>/Mods/<ModName>/Resources/Icon128.png
+	 */
+	FString IconPath =
+		FPaths::ConvertRelativePathToFull(
+			FPaths::Combine(
+				FPaths::ProjectDir(),
+				TEXT("Mods"),
+				Mod->GetName(),
+				TEXT("Resources"),
+				TEXT("Icon128.png")));
+
+	FPaths::NormalizeFilename(IconPath);
+
+	/*
+	 * Keep GetBaseDir() as a secondary lookup for engine/project plugins shown
+	 * through the optional filters, where the plugin may not physically live in
+	 * <Project>/Mods.
+	 */
+	if (!FPaths::FileExists(IconPath))
+	{
+		FString PluginBaseIconPath =
+			FPaths::ConvertRelativePathToFull(
+				FPaths::Combine(
+					Mod->GetBaseDir(),
+					TEXT("Resources"),
+					TEXT("Icon128.png")));
+
+		FPaths::NormalizeFilename(PluginBaseIconPath);
+
+		if (FPaths::FileExists(PluginBaseIconPath))
+		{
+			IconPath = MoveTemp(PluginBaseIconPath);
+		}
+	}
+
+	if (!FPaths::FileExists(IconPath))
+	{
+		const TSharedPtr<IPlugin> CrimeForgePlugin =
+			IPluginManager::Get().FindPlugin(
+				TEXT("CrimeForge"));
+
+		if (CrimeForgePlugin.IsValid())
+		{
+			IconPath =
+				FPaths::ConvertRelativePathToFull(
+					FPaths::Combine(
+						CrimeForgePlugin->GetBaseDir(),
+						TEXT("Resources"),
+						TEXT("CrimeForge128.png")));
+
+			FPaths::NormalizeFilename(IconPath);
+		}
+	}
+
+	UE_LOG(
+		LogCrimeForge,
+		Verbose,
+		TEXT("Mod card icon for '%s': %s (exists=%s)"),
+		*Mod->GetName(),
+		*IconPath,
+		FPaths::FileExists(IconPath) ? TEXT("true") : TEXT("false"));
+
+	/*
+	 * These icons live outside a registered Slate style and can appear after
+	 * the editor has already started (for example after Create Mod / legacy
+	 * import). A normal FSlateImageBrush can leave the renderer with no loaded
+	 * resource here, which paints as a solid white rectangle. Use a dynamic
+	 * image brush so Slate registers and loads the PNG resource on demand.
+	 */
+	ModIconBrush =
+		MakeShared<FSlateDynamicImageBrush>(
+			FName(*IconPath),
+			FVector2D(128.0f, 128.0f),
+			FLinearColor::White,
+			ESlateBrushTileType::NoTile,
+			ESlateBrushImageType::FullColor);
+
+	const FText DisplayName =
+		FText::FromString(
+			Mod->GetDescriptor().FriendlyName.IsEmpty()
+				? Mod->GetName()
+				: Mod->GetDescriptor().FriendlyName);
+
 	ChildSlot
 	[
-		SNew(SVerticalBox)
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 5, 0)
-			.VAlign(VAlign_Center)
-			[
-				Checkbox.ToSharedRef()
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 5, 0)
-			.VAlign(VAlign_Center)
-			[
-				SNew(SButton)
-				.Text(
-					LOCTEXT(
-						"PackageModCrimeForge",
-						"CrimeForge!"))
-				.OnClicked_Lambda(
-					[this]()
-					{
-						PackageMod(
-							TArray<
-								TSharedPtr<
-									SCrimeForgeModEntry>>());
-
-						return FReply::Handled();
-					})
-				.ToolTipText_Lambda(
-					[this]()
-					{
-						return FText::FromString(
-							FString::Printf(
-								TEXT("CrimeForge %s"),
-								*this->Mod->GetName()));
-					})
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 5, 0)
-			.VAlign(VAlign_Center)
-			[
-				SNew(SButton)
-				.Text(
-					LOCTEXT(
-						"EditModCrimeForge",
-						"Edit"))
-				.OnClicked_Lambda(
-					[this]()
-					{
-						this->OnEditMod();
-						return FReply::Handled();
-					})
-				.ToolTipText_Lambda(
-					[this]()
-					{
-						return FText::FromString(
-							FString::Printf(
-								TEXT("Edit %s"),
-								*this->Mod->GetName()));
-					})
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 5, 0)
-			.VAlign(VAlign_Center)
-			[
-				SNew(SButton)
-				.Text(
-					this,
-					&SCrimeForgeModEntry::GetPALInspectorButtonText)
-				.OnClicked(
-					this,
-					&SCrimeForgeModEntry::OnTogglePALInspector)
-				.ToolTipText(
-					LOCTEXT(
-						"PALInspectorTooltip",
-						"Show PAL, chunk, packaging mode, and managed asset information"))
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 5, 0)
-			.VAlign(VAlign_Center)
-			[
-				SNew(SButton)
-				.Text(
-					LOCTEXT(
-						"DeleteModCrimeForge",
-						"Delete"))
-				.OnClicked(
-					this,
-					&SCrimeForgeModEntry::OnDeleteMod)
-				.Visibility_Lambda(
-					[this]()
-					{
-						if (!Mod.IsValid())
-						{
-							return
-								EVisibility::Collapsed;
-						}
-
-						FString ModBaseDir =
-							FPaths::ConvertRelativePathToFull(
-								Mod->GetBaseDir());
-
-						FString ProjectModsDir =
-							FPaths::ConvertRelativePathToFull(
-								FPaths::Combine(
-									FPaths::ProjectDir(),
-									TEXT("Mods")));
-
-						FPaths::NormalizeDirectoryName(
-							ModBaseDir);
-
-						FPaths::NormalizeDirectoryName(
-							ProjectModsDir);
-
-						const FString ProjectModsPrefix =
-							ProjectModsDir.EndsWith(
-								TEXT("/"))
-								? ProjectModsDir
-								: ProjectModsDir +
-									TEXT("/");
-
-						const bool bIsInsideProjectMods =
-							ModBaseDir.StartsWith(
-								ProjectModsPrefix,
-								ESearchCase::IgnoreCase) &&
-							ModBaseDir.Len() >
-								ProjectModsPrefix.Len();
-
-						return bIsInsideProjectMods
-							? EVisibility::Visible
-							: EVisibility::Collapsed;
-					})
-				.ToolTipText_Lambda(
-					[this]()
-					{
-						return Mod.IsValid()
-							? FText::FromString(
-								FString::Printf(
-									TEXT(
-										"Permanently delete %s"),
-									*Mod->GetName()))
-							: FText::GetEmpty();
-					})
-			]
-
-			+ SHorizontalBox::Slot()
-			.FillWidth(1)
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-					.Text_Lambda(
-						[InMod]()
-						{
-							const FString DisplayText =
-								FString::Printf(
-									TEXT("%s (%s)"),
-									*InMod->GetDescriptor()
-										.FriendlyName,
-									*InMod->GetName());
-
-							return
-								FText::FromString(
-									DisplayText);
-						})
-					.HighlightText_Lambda(
-						[InOwner]()
-						{
-							return
-								FText::FromString(
-									InOwner
-										->GetLastFilter());
-						})
-			]
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(26.0f, 3.0f, 0.0f, 5.0f)
+		SNew(SBox)
+		.WidthOverride(190.0f)
 		[
 			SNew(SBorder)
-				.Padding(FMargin(8.0f, 6.0f))
-				.Visibility(
-					this,
-					&SCrimeForgeModEntry::GetPALInspectorVisibility)
+			.Padding(FMargin(6.0f))
+			[
+				SNew(SVerticalBox)
+
+				// Card header: selection, mod name, delete.
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, 4.0f)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+					[
+						Checkbox.ToSharedRef()
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Text(DisplayName)
+						.Justification(ETextJustify::Center)
+						.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 12))
+						.HighlightText_Lambda(
+							[InOwner]()
+							{
+								return FText::FromString(
+									InOwner->GetLastFilter());
+							})
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SButton)
+						.ButtonStyle(
+							FAppStyle::Get(),
+							TEXT("SimpleButton"))
+						.ContentPadding(FMargin(2.0f))
+						.OnClicked(
+							this,
+							&SCrimeForgeModEntry::OnDeleteMod)
+						.Visibility_Lambda(
+							[this]()
+							{
+								if (!Mod.IsValid())
+								{
+									return EVisibility::Collapsed;
+								}
+
+								FString ModBaseDir =
+									FPaths::ConvertRelativePathToFull(
+										Mod->GetBaseDir());
+
+								FString ProjectModsDir =
+									FPaths::ConvertRelativePathToFull(
+										FPaths::Combine(
+											FPaths::ProjectDir(),
+											TEXT("Mods")));
+
+								FPaths::NormalizeDirectoryName(
+									ModBaseDir);
+								FPaths::NormalizeDirectoryName(
+									ProjectModsDir);
+
+								const FString ProjectModsPrefix =
+									ProjectModsDir.EndsWith(TEXT("/"))
+										? ProjectModsDir
+										: ProjectModsDir + TEXT("/");
+
+								return
+									ModBaseDir.StartsWith(
+										ProjectModsPrefix,
+										ESearchCase::IgnoreCase) &&
+									ModBaseDir.Len() >
+										ProjectModsPrefix.Len()
+										? EVisibility::Visible
+										: EVisibility::Collapsed;
+							})
+						.ToolTipText_Lambda(
+							[this]()
+							{
+								return Mod.IsValid()
+									? FText::FromString(
+										FString::Printf(
+											TEXT("Permanently delete %s"),
+											*Mod->GetName()))
+									: FText::GetEmpty();
+							})
+						[
+							SNew(SImage)
+							.Image(
+								FAppStyle::GetBrush(
+									TEXT("Icons.Delete")))
+							.ColorAndOpacity(
+								FLinearColor(
+									1.0f,
+									0.20f,
+									0.20f,
+									1.0f))
+						]
+					]
+				]
+
+				// The icon itself is the "open this mod in Content Browser" button.
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.HAlign(HAlign_Center)
+				.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+				[
+					SNew(SButton)
+					.ContentPadding(FMargin(0.0f))
+					.OnClicked(
+						this,
+						&SCrimeForgeModEntry::OnOpenModContent)
+					.ToolTipText_Lambda(
+						[this]()
+						{
+							return Mod.IsValid()
+								? FText::FromString(
+									FString::Printf(
+										TEXT("Open /%s in the Content Browser"),
+										*Mod->GetName()))
+								: FText::GetEmpty();
+						})
+					[
+						SNew(SBox)
+						.WidthOverride(128.0f)
+						.HeightOverride(128.0f)
+						[
+							SNew(SImage)
+							.Image(ModIconBrush.Get())
+						]
+					]
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 1.0f)
+				[
+					SNew(SButton)
+					.HAlign(HAlign_Center)
+					.Text(
+						LOCTEXT(
+							"ModCardInformation",
+							"Information"))
+					.ButtonColorAndOpacity(
+						this,
+						&SCrimeForgeModEntry::GetInformationButtonColor)
+					.OnClicked(
+						this,
+						&SCrimeForgeModEntry::OnOpenInformation)
+					.ToolTipText(
+						this,
+						&SCrimeForgeModEntry::GetInformationButtonTooltip)
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 1.0f)
+				[
+					SNew(SButton)
+					.HAlign(HAlign_Center)
+					.Text(
+						LOCTEXT(
+							"ModCardConfig",
+							"CONFIG"))
+					.OnClicked_Lambda(
+						[this]()
+						{
+							OnEditMod();
+							return FReply::Handled();
+						})
+					.ToolTipText_Lambda(
+						[this]()
+						{
+							return Mod.IsValid()
+								? FText::FromString(
+									FString::Printf(
+										TEXT("Edit %s configuration"),
+										*Mod->GetName()))
+								: FText::GetEmpty();
+						})
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 1.0f)
+				[
+					SNew(SButton)
+					.HAlign(HAlign_Center)
+					.Text(
+						LOCTEXT(
+							"ModCardForge",
+							"FORGE"))
+					.OnClicked_Lambda(
+						[this]()
+						{
+							PackageMod(
+								TArray<
+									TSharedPtr<
+										SCrimeForgeModEntry>>());
+
+							return FReply::Handled();
+						})
+					.ToolTipText_Lambda(
+						[this]()
+						{
+							return Mod.IsValid()
+								? FText::FromString(
+									FString::Printf(
+										TEXT("Forge %s"),
+										*Mod->GetName()))
+								: FText::GetEmpty();
+						})
+				]
+			]
+		]
+	];
+}
+
+FReply SCrimeForgeModEntry::OnOpenModContent()
+{
+	if (!Mod.IsValid())
+	{
+		return FReply::Handled();
+	}
+
+	TArray<FString> FolderPaths;
+	FolderPaths.Add(
+		FString::Printf(
+			TEXT("/%s"),
+			*Mod->GetName()));
+
+	FContentBrowserModule& ContentBrowserModule =
+		FModuleManager::LoadModuleChecked<FContentBrowserModule>(
+			TEXT("ContentBrowser"));
+
+	ContentBrowserModule.Get().SyncBrowserToFolders(
+		FolderPaths,
+		true,
+		true);
+
+	return FReply::Handled();
+}
+
+FReply SCrimeForgeModEntry::OnOpenInformation()
+{
+	OnRefreshPALInspector();
+
+	const FString WindowTitle =
+		Mod.IsValid()
+			? FString::Printf(
+				TEXT("%s - Information"),
+				*Mod->GetName())
+			: TEXT("Mod Information");
+
+	TSharedRef<SWindow> InformationWindow =
+		SNew(SWindow)
+		.Title(
+			FText::FromString(
+				WindowTitle))
+		.ClientSize(
+			FVector2D(
+				650.0f,
+				300.0f))
+		.SupportsMaximize(false)
+		.SupportsMinimize(false)
+		[
+			SNew(SBorder)
+			.Padding(FMargin(10.0f))
+			[
+				SNew(SVerticalBox)
+
+				+ SVerticalBox::Slot()
+				.FillHeight(1.0f)
+				[
+					SNew(SScrollBox)
+
+					+ SScrollBox::Slot()
+					[
+						SNew(STextBlock)
+						.Text(
+							this,
+							&SCrimeForgeModEntry::GetPALInspectorSummaryText)
+						.AutoWrapText(true)
+					]
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 10.0f, 0.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
 
 					+ SHorizontalBox::Slot()
 					.FillWidth(1.0f)
-					.VAlign(VAlign_Top)
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .Padding(0.0f, 0.0f, 5.0f, 0.0f)
+                    [
+                        SNew(SButton)
+                        .Text(
+                            LOCTEXT(
+                                "PALInspectorFixIssues",
+                                "Fix Issues"))
+                        .ButtonColorAndOpacity(
+                            FSlateColor(
+                                FLinearColor(
+                                    1.0f,
+                                    0.35f,
+                                    0.03f,
+                                    1.0f)))
+                        .Visibility(
+                            this,
+                            &SCrimeForgeModEntry::GetFixInformationVisibility)
+                        .IsEnabled(
+                            this,
+                            &SCrimeForgeModEntry::CanAutoFixInformationIssues)
+                        .ToolTipText(
+                            LOCTEXT(
+                                "PALInspectorFixIssuesTooltip",
+                                "Automatically repair safe PAL and Asset Manager configuration issues. Missing explicit asset references are left for manual repair."))
+                        .OnClicked(
+                            this,
+                            &SCrimeForgeModEntry::OnFixInformationIssues)
+                    ]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0.0f, 0.0f, 5.0f, 0.0f)
 					[
-						SNew(STextBlock)
-							.Text(
-								this,
-								&SCrimeForgeModEntry::GetPALInspectorSummaryText)
-							.AutoWrapText(true)
+						SNew(SButton)
+						.Text(
+							LOCTEXT(
+								"PALInspectorRefresh",
+								"Refresh"))
+						.OnClicked(
+							this,
+							&SCrimeForgeModEntry::OnRefreshPALInspector)
 					]
 
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
-					.Padding(10.0f, 0.0f, 0.0f, 0.0f)
-					.VAlign(VAlign_Top)
 					[
 						SNew(SButton)
-							.Text(
-								LOCTEXT(
-									"PALInspectorRefresh",
-									"Refresh"))
-							.OnClicked(
-								this,
-								&SCrimeForgeModEntry::OnRefreshPALInspector)
-					]
-
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.Padding(5.0f, 0.0f, 0.0f, 0.0f)
-					.VAlign(VAlign_Top)
-					[
-						SNew(SButton)
-							.Text(
-								LOCTEXT(
-									"PALInspectorViewAssets",
-									"View Assets"))
-							.OnClicked(
-								this,
-								&SCrimeForgeModEntry::OnViewPALAssets)
+						.Text(
+							LOCTEXT(
+								"PALInspectorViewAssets",
+								"View Assets"))
+						.OnClicked(
+							this,
+							&SCrimeForgeModEntry::OnViewPALAssets)
 					]
 				]
-		]
-	];
-}
+			]
+		];
 
-FReply SCrimeForgeModEntry::OnTogglePALInspector()
-{
-	bPALInspectorExpanded =
-		!bPALInspectorExpanded;
-
-	if (bPALInspectorExpanded)
-	{
-		OnRefreshPALInspector();
-	}
+	FSlateApplication::Get().AddWindow(
+		InformationWindow);
 
 	return FReply::Handled();
-}
-
-FText SCrimeForgeModEntry::GetPALInspectorButtonText() const
-{
-	return bPALInspectorExpanded
-		? LOCTEXT(
-			"PALInspectorCollapse",
-			"PAL <")
-		: LOCTEXT(
-			"PALInspectorExpand",
-			"PAL >");
-}
-
-EVisibility SCrimeForgeModEntry::GetPALInspectorVisibility() const
-{
-	return bPALInspectorExpanded
-		? EVisibility::Visible
-		: EVisibility::Collapsed;
 }
 
 FText SCrimeForgeModEntry::GetPALInspectorSummaryText() const
@@ -2248,84 +2707,213 @@ FText SCrimeForgeModEntry::GetPALInspectorSummaryText() const
 	return PALInspectorSummary;
 }
 
-FReply SCrimeForgeModEntry::OnRefreshPALInspector()
+void SCrimeForgeModEntry::RefreshPALInspectorState()
 {
 	if (!Mod.IsValid())
 	{
+		bInformationHasWarnings = true;
+		bInformationHasAutoFixableWarnings = false;
 		PALInspectorSummary =
 			LOCTEXT(
 				"PALInspectorInvalidModRefresh",
 				"Mod is no longer valid.");
-
-		return FReply::Handled();
+		return;
 	}
 
 	const FCrimeForgePALInspectionData Data =
 		BuildPALInspectionData(*Mod);
 
+	const int32 WarningCount =
+		CountPALInspectionWarnings(Data);
+
+	bInformationHasWarnings =
+		WarningCount > 0;
+
+	bInformationHasAutoFixableWarnings =
+		HasAutoFixablePALInspectionWarnings(Data);
+
+	FString Summary;
+
 	if (!Data.bPALFound)
 	{
-		PALInspectorSummary =
-			FText::FromString(
-				FString::Printf(
-					TEXT(
-						"PAL: MISSING (%s)\n"
-						"Plugin assets: %d\n"
-						"Packaging: Single-stage fallback"
-					),
-					*Data.PALPackagePath,
-					Data.PluginAssets.Num()));
-
-		return FReply::Handled();
-	}
-
-	const int32 ExternalReferenceCount =
-		Data.ExternalAssets.Num() +
-		Data.ExternalBlueprints.Num();
-
-	const FString ChunkText =
-		Data.ChunkId >= 0
-			? FString::FromInt(Data.ChunkId)
-			: TEXT("Unset");
-
-	const FString PackagingText =
-		Data.bTwoStagePackaging
-			? TEXT("Two-stage")
-			: TEXT("Single-stage");
-
-	const FString AssetManagerText =
-		FString::Printf(
-			TEXT(
-				"Directory: %s | Specific PAL: %s"
-			),
-			Data.bAssetManagerDirectoryRegistered
-				? TEXT("Registered")
-				: TEXT("Missing"),
-			Data.bPALSpecificAssetRegistered
-				? TEXT("Registered")
-				: TEXT("Missing"));
-
-	PALInspectorSummary =
-		FText::FromString(
+		Summary =
 			FString::Printf(
 				TEXT(
+					"Status: WARNING (%d issue%s)\n"
+					"PAL: MISSING (%s)\n"
+					"Plugin assets: %d\n"
+					"Packaging: Single-stage fallback"
+				),
+				WarningCount,
+				WarningCount == 1 ? TEXT("") : TEXT("s"),
+				*Data.PALPackagePath,
+				Data.PluginAssets.Num());
+	}
+	else
+	{
+		const int32 ExternalReferenceCount =
+			Data.ExternalAssets.Num() +
+			Data.ExternalBlueprints.Num();
+
+		const FString ChunkText =
+			Data.ChunkId >= 0
+				? FString::FromInt(Data.ChunkId)
+				: TEXT("Unset");
+
+		const FString PackagingText =
+			Data.bTwoStagePackaging
+				? TEXT("Two-stage")
+				: TEXT("Single-stage");
+
+		const FString AssetManagerText =
+			FString::Printf(
+				TEXT(
+					"Directory: %s | Specific PAL: %s"
+				),
+				Data.bAssetManagerDirectoryRegistered
+					? TEXT("Registered")
+					: TEXT("Missing"),
+				Data.bPALSpecificAssetRegistered
+					? TEXT("Registered")
+					: TEXT("Missing"));
+
+		const FString StatusText =
+			WarningCount > 0
+				? FString::Printf(
+					TEXT("WARNING (%d issue%s)"),
+					WarningCount,
+					WarningCount == 1
+						? TEXT("")
+						: TEXT("s"))
+				: TEXT("OK");
+
+		Summary =
+			FString::Printf(
+				TEXT(
+					"Status: %s\n"
 					"PAL: %s\n"
 					"Chunk: %s | Packaging: %s | Runtime Label: %s\n"
+					"Directory Label: %s | Include Redirectors: %s\n"
+					"Recursive: %s | Cook Rule: %s\n"
 					"Plugin assets: %d | PAL chunk candidates: %d\n"
 					"External refs: %d | /Game replacements: %d\n"
 					"Asset Manager: %s"
 				),
+				*StatusText,
 				*Data.PALPackagePath,
 				*ChunkText,
 				*PackagingText,
-				Data.bRuntimeLabel
-					? TEXT("Yes")
-					: TEXT("No"),
+				Data.bRuntimeLabel ? TEXT("Yes") : TEXT("No"),
+				Data.bLabelAssetsInMyDirectory ? TEXT("Yes") : TEXT("No"),
+				Data.bIncludeRedirectors ? TEXT("Yes") : TEXT("No"),
+				Data.bApplyRecursively ? TEXT("Yes") : TEXT("No"),
+				Data.bAlwaysCook ? TEXT("Always Cook") : TEXT("Not Always Cook"),
 				Data.PluginAssets.Num(),
 				Data.ManagedChunkCandidates.Num(),
 				ExternalReferenceCount,
 				Data.ExternalGameAssets.Num(),
-				*AssetManagerText));
+				*AssetManagerText);
+	}
+
+	AppendPALInspectionIssues(
+		Data,
+		Summary);
+
+	PALInspectorSummary =
+		FText::FromString(
+			Summary);
+}
+
+FReply SCrimeForgeModEntry::OnRefreshPALInspector()
+{
+	RefreshPALInspectorState();
+	return FReply::Handled();
+}
+
+FSlateColor SCrimeForgeModEntry::GetInformationButtonColor() const
+{
+	return
+		bInformationHasWarnings
+			? FSlateColor(
+				FLinearColor(
+					1.0f,
+					0.35f,
+					0.03f,
+					1.0f))
+			: FSlateColor::UseForeground();
+}
+
+FText SCrimeForgeModEntry::GetInformationButtonTooltip() const
+{
+	return
+		bInformationHasWarnings
+			? LOCTEXT(
+				"ModCardInformationWarningTooltip",
+				"CrimeForge found one or more issues. Open Information for details and available automatic fixes.")
+			: LOCTEXT(
+				"ModCardInformationTooltip",
+				"Show PAL, chunk, packaging mode, and managed asset information");
+}
+
+EVisibility SCrimeForgeModEntry::GetFixInformationVisibility() const
+{
+	return
+		bInformationHasWarnings
+			? EVisibility::Visible
+			: EVisibility::Collapsed;
+}
+
+bool SCrimeForgeModEntry::CanAutoFixInformationIssues() const
+{
+	return bInformationHasAutoFixableWarnings;
+}
+
+FReply SCrimeForgeModEntry::OnFixInformationIssues()
+{
+	if (!Mod.IsValid())
+	{
+		return FReply::Handled();
+	}
+
+	const FCrimeForgePALInspectionData Before =
+		BuildPALInspectionData(*Mod);
+
+	FString FixResult;
+
+	const bool bFixed =
+		CreateOrRepairCrimeForgePAL(
+			*Mod,
+			Before,
+			FixResult);
+
+	RefreshPALInspectorState();
+
+	if (!bFixed)
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			FText::FromString(
+				FString::Printf(
+					TEXT(
+						"CrimeForge could not complete the automatic repair.\n\n%s"
+					),
+					*FixResult)));
+	}
+	else if (
+		bInformationHasWarnings &&
+		!bInformationHasAutoFixableWarnings)
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			FText::FromString(
+				FString::Printf(
+					TEXT(
+						"%s\n\nCrimeForge fixed the safe configuration issues. "
+						"One or more references still require manual repair; "
+						"see Information for details."
+					),
+					*FixResult)));
+	}
 
 	return FReply::Handled();
 }

@@ -8,6 +8,7 @@
 #include "ISettingsModule.h"
 #include "ISettingsSection.h"
 #include "LevelEditor.h"
+#include "ToolMenus.h"
 #include "IPluginBrowser.h"
 #include "ModWizardDefinition.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -49,14 +50,26 @@ void FCrimeForgeModule::StartupModule() {
         FCanExecuteAction());
     FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
     
-    //Register CrimeForge Settings in Editor's Project Menu
-    TSharedPtr<FExtender> MenuExtender = MakeShareable(new FExtender());
-    MenuExtender->AddMenuExtension(TEXT("FileProject"), EExtensionHook::After, PluginCommands,
-        FMenuExtensionDelegate::CreateLambda([](FMenuBuilder& Builder){
-            Builder.AddMenuEntry(FCrimeForgeCommands::Get().OpenPluginWindow);
-        }));
-    LevelEditorModule.GetMenuExtensibilityManager()->AddExtender(MenuExtender);
-    
+    // Register CrimeForge in the editor's Window menu instead of File.
+    {
+        FToolMenuOwnerScoped OwnerScoped(this);
+
+        UToolMenu* WindowMenu =
+            UToolMenus::Get()->ExtendMenu(
+                TEXT("LevelEditor.MainMenu.Window"));
+
+        if (WindowMenu)
+        {
+            FToolMenuSection& Section =
+                WindowMenu->FindOrAddSection(
+                    TEXT("WindowLayout"));
+
+            Section.AddMenuEntryWithCommandList(
+                FCrimeForgeCommands::Get().OpenPluginWindow,
+                PluginCommands);
+        }
+    }
+
     //Register CrimeForge Settings in Editor's Toolbar
     TSharedPtr<FExtender> ToolbarExtender = MakeShareable(new FExtender);
     ToolbarExtender->AddToolBarExtension(TEXT("Play"), EExtensionHook::After, PluginCommands,
@@ -90,6 +103,8 @@ void FCrimeForgeModule::ShutdownModule() {
         UnregisterSettings();
     }
     
+    UToolMenus::UnregisterOwner(this);
+
     FCrimeForgeStyle::Shutdown();
     FCrimeForgeCommands::Unregister();
 
