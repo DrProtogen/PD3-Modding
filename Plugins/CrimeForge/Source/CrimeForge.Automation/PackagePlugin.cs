@@ -962,6 +962,97 @@ namespace CrimeForge.Automation
 				.ToList();
 		}
 
+		private static bool IsManifestTokenTerminator(
+			char value)
+		{
+			return char.IsWhiteSpace(value) ||
+				value == '\"' ||
+				value == '\'';
+		}
+
+		private static bool ManifestLineContainsExactToken(
+			string normalizedLine,
+			string token)
+		{
+			if (string.IsNullOrWhiteSpace(normalizedLine) ||
+			    string.IsNullOrWhiteSpace(token))
+			{
+				return false;
+			}
+
+			/*
+			 * Chunk manifests contain cooked filenames rather than just long
+			 * package names, so a token may legitimately be followed by a
+			 * cooked package extension. It must NOT, however, match another
+			 * package whose name merely starts with this package name.
+			 *
+			 * Example:
+			 *   WBP_MenuRoot.uasset          -> match
+			 *   WBP_MenuRoot.uexp            -> match
+			 *   WBP_MenuRoot_Button.uasset   -> do not match
+			 */
+			string[] cookedPackageExtensions =
+			{
+				".uasset",
+				".umap",
+				".uexp",
+				".ubulk",
+				".uptnl",
+				".m.ubulk"
+			};
+
+			int searchStart = 0;
+
+			while (searchStart < normalizedLine.Length)
+			{
+				int tokenIndex = normalizedLine.IndexOf(
+					token,
+					searchStart,
+					StringComparison.Ordinal);
+
+				if (tokenIndex < 0)
+				{
+					return false;
+				}
+
+				int tokenEnd = tokenIndex + token.Length;
+
+				if (tokenEnd == normalizedLine.Length ||
+				    IsManifestTokenTerminator(normalizedLine[tokenEnd]))
+				{
+					return true;
+				}
+
+				if (!token.EndsWith(
+						".uasset",
+						StringComparison.OrdinalIgnoreCase))
+				{
+					foreach (string extension in cookedPackageExtensions)
+					{
+						if (!normalizedLine.Substring(tokenEnd).StartsWith(
+								extension,
+								StringComparison.Ordinal))
+						{
+							continue;
+						}
+
+						int extensionEnd = tokenEnd + extension.Length;
+
+						if (extensionEnd == normalizedLine.Length ||
+						    IsManifestTokenTerminator(
+							    normalizedLine[extensionEnd]))
+						{
+							return true;
+						}
+					}
+				}
+
+				searchStart = tokenIndex + 1;
+			}
+
+			return false;
+		}
+
 		private static bool ManifestLineMatchesPackage(
 			string manifestLine,
 			string packageName,
@@ -975,7 +1066,9 @@ namespace CrimeForge.Automation
 					packageName,
 					pluginName))
 			{
-				if (normalizedLine.Contains(token))
+				if (ManifestLineContainsExactToken(
+						normalizedLine,
+						token))
 				{
 					return true;
 				}
