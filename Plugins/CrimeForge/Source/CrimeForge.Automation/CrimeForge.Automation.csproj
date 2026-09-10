@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <EngineDir>G:\Program Files\Epic Games\UE_5.5\Engine</EngineDir>
+  <!--
+    UAT supplies $(EngineDir) when this automation project is discovered via
+    -ScriptDir. The optional sibling props file only provides non-hardcoded
+    fallbacks for manual/IDE builds.
+  -->
+  <Import Project="$(MSBuildProjectFullPath).props"
+          Condition="Exists('$(MSBuildProjectFullPath).props')" />
 
+  <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <OutputType>Library</OutputType>
 
@@ -16,6 +22,15 @@
     <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
+
+  <Target Name="ValidateEngineDir" BeforeTargets="ResolveReferences">
+    <Error
+      Condition="'$(EngineDir)' == ''"
+      Text="EngineDir was not supplied. Run this project through the current engine's RunUAT with -ScriptDir, pass -p:EngineDir=..., or set UE_ENGINE_DIR." />
+    <Error
+      Condition="'$(EngineDir)' != '' and !Exists('$(EngineDir)\Binaries\DotNET\AutomationTool\AutomationTool.dll')"
+      Text="EngineDir points to an invalid Unreal Engine directory: '$(EngineDir)'." />
+  </Target>
 
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
     <DefineConstants>DEBUG;TRACE</DefineConstants>
