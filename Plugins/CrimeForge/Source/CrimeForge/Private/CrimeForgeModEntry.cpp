@@ -16,6 +16,7 @@
 #include "Modules/ModuleManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "UObject/Package.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -35,6 +36,7 @@
 #include "HAL/PlatformMisc.h"
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
+#include "Interfaces/IPluginManager.h"
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
@@ -2192,6 +2194,534 @@ namespace
 
 		return ChunkId;
 	}
+
+	FString ResolveCrimeForgeAutomationScriptDir()
+	{
+		if (const TSharedPtr<IPlugin> CrimeForgePlugin =
+			IPluginManager::Get().FindPlugin(TEXT("CrimeForge"));
+			CrimeForgePlugin.IsValid())
+		{
+			return FPaths::ConvertRelativePathToFull(
+				FPaths::Combine(
+					CrimeForgePlugin->GetBaseDir(),
+					TEXT("Source/CrimeForge.Automation")));
+		}
+
+		return FPaths::ConvertRelativePathToFull(
+			FPaths::Combine(
+				FPaths::ProjectPluginsDir(),
+				TEXT("CrimeForge/Source/CrimeForge.Automation")));
+	}
+
+	FString GetCrimeForgeAutomationDllPath()
+	{
+		return FPaths::ConvertRelativePathToFull(
+			FPaths::Combine(
+				FPaths::EngineDir(),
+				TEXT("Binaries/DotNET/AutomationTool/AutomationScripts/CrimeForge/net8.0/CrimeForge.Automation.dll")));
+	}
+
+	FString GetCrimeForgeAutomationBootstrapMarkerPath()
+	{
+		FString EngineRoot =
+			FPaths::ConvertRelativePathToFull(FPaths::EngineDir());
+		FPaths::NormalizeDirectoryName(EngineRoot);
+
+		const uint32 EngineHash = GetTypeHash(EngineRoot.ToLower());
+
+		return FPaths::Combine(
+			FPaths::ProjectSavedDir(),
+			TEXT("CrimeForge"),
+			TEXT("Setup"),
+			FString::Printf(
+				TEXT("Automation_%08X.ready"),
+				EngineHash));
+	}
+
+	FDateTime GetNewestCrimeForgeAutomationSourceTimestamp(
+		const FString& ScriptDir)
+	{
+		IFileManager& FileManager = IFileManager::Get();
+		FDateTime Newest = FDateTime::MinValue();
+
+		const TCHAR* SourceFiles[] =
+		{
+			TEXT("CrimeForge.Automation.csproj"),
+			TEXT("CrimeForge.Automation.csproj.props"),
+			TEXT("PackagePlugin.cs")
+		};
+
+		for (const TCHAR* SourceFile : SourceFiles)
+		{
+			const FString FullPath =
+				FPaths::Combine(ScriptDir, SourceFile);
+
+			if (FileManager.FileExists(*FullPath))
+			{
+				const FDateTime Timestamp =
+					FileManager.GetTimeStamp(*FullPath);
+
+				if (Timestamp > Newest)
+				{
+					Newest = Timestamp;
+				}
+			}
+		}
+
+		return Newest;
+	}
+
+	bool RunBatchFileAndCapture(
+		const FString& BatchFile,
+		const FString& Arguments,
+		int32& OutReturnCode,
+		FString& OutOutput,
+		const FString& ConsoleAction = FString(),
+		const FString& ConsoleDetail = FString(),
+		const FString& ConsoleSuccess = FString())
+	{
+		/*
+		 * Do not use ExecProcess for the first-time setup window. ExecProcess
+		 * redirects the child's standard handles into pipes so Unreal can capture
+		 * them; on Windows that leaves the console host visible but blank.
+		 *
+		 * Instead, launch a tiny wrapper with CreateProc and no pipes. The wrapper
+		 * owns the visible console and prints the friendly CrimeForge status text.
+		 * The real UAT/Build.bat output is redirected by the wrapper to a temporary
+		 * log file, which we load afterwards so all existing validation and error
+		 * dialogs still get the full technical output.
+		 */
+		const FString SetupDirectory = FPaths::Combine(
+			FPaths::ProjectSavedDir(),
+			TEXT("CrimeForge"),
+			TEXT("Setup"));
+
+		IFileManager::Get().MakeDirectory(*SetupDirectory, true);
+
+		const FString SetupId =
+			FGuid::NewGuid().ToString(EGuidFormats::Digits);
+		const FString WrapperPath = FPaths::Combine(
+			SetupDirectory,
+			FString::Printf(
+				TEXT("CrimeForgeSetup_%s.bat"),
+				*SetupId));
+		const FString CapturePath = FPaths::Combine(
+			SetupDirectory,
+			FString::Printf(
+				TEXT("CrimeForgeSetup_%s.log"),
+				*SetupId));
+
+		const FString ActionText = ConsoleAction.IsEmpty()
+			? TEXT("Preparing CrimeForge prerequisites...")
+			: ConsoleAction;
+		const FString DetailText = ConsoleDetail.IsEmpty()
+			? TEXT("This is only required the first time this engine is used with CrimeForge.")
+			: ConsoleDetail;
+		const FString SuccessText = ConsoleSuccess.IsEmpty()
+			? TEXT("Setup step completed successfully.")
+			: ConsoleSuccess;
+
+		const FString WrapperContents = FString::Printf(
+			TEXT("@echo off\r\n")
+			TEXT("setlocal\r\n")
+			TEXT("title CrimeForge - First Time Setup\r\n")
+			TEXT("cls\r\n")
+			TEXT("echo ================================================================\r\n")
+			TEXT("echo                  CRIMEFORGE - FIRST TIME SETUP\r\n")
+			TEXT("echo ================================================================\r\n")
+			TEXT("echo.\r\n")
+			TEXT("echo [SETUP] %s\r\n")
+			TEXT("echo         %s\r\n")
+			TEXT("echo.\r\n")
+			TEXT("echo         Please keep this window open. CrimeForge will continue automatically.\r\n")
+			TEXT("echo.\r\n")
+			TEXT("echo [1/3]   Starting %s\r\n")
+			TEXT("echo [2/3]   Running setup command... this can take a few minutes on a fresh source build.\r\n")
+			TEXT("echo         Detailed output: %s\r\n")
+			TEXT("echo.\r\n")
+			TEXT("call \"%s\" %s > \"%s\" 2>&1\r\n")
+			TEXT("set \"CF_EXIT=%%ERRORLEVEL%%\"\r\n")
+			TEXT("echo.\r\n")
+			TEXT("if \"%%CF_EXIT%%\"==\"0\" (\r\n")
+			TEXT("    echo [3/3]   Command finished successfully.\r\n")
+			TEXT("    echo [OK]    %s\r\n")
+			TEXT(") else (\r\n")
+			TEXT("    echo [FAILED] Setup command failed with exit code %%CF_EXIT%%.\r\n")
+			TEXT("    echo          CrimeForge will show the detailed error after this window closes.\r\n")
+			TEXT(")\r\n")
+			TEXT("echo.\r\n")
+			TEXT("exit /b %%CF_EXIT%%\r\n"),
+			*ActionText,
+			*DetailText,
+			*FPaths::GetCleanFilename(BatchFile),
+			*CapturePath,
+			*BatchFile,
+			*Arguments,
+			*CapturePath,
+			*SuccessText);
+
+		if (!FFileHelper::SaveStringToFile(WrapperContents, *WrapperPath))
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Warning,
+				TEXT("Could not create first-time setup console wrapper: %s"),
+				*WrapperPath);
+			return false;
+		}
+
+		const FString CmdArguments = FString::Printf(
+			TEXT("/d /s /c \"\"%s\"\""),
+			*WrapperPath);
+
+		/*
+		 * No output pipes here on purpose. This gives cmd.exe real console handles,
+		 * so the wrapper's echo lines are actually visible in the terminal window.
+		 */
+		FProcHandle ProcessHandle = FPlatformProcess::CreateProc(
+			TEXT("cmd.exe"),
+			*CmdArguments,
+			false, // bLaunchDetached
+			false, // bLaunchHidden
+			false, // bLaunchReallyHidden
+			nullptr,
+			0,
+			nullptr,
+			nullptr);
+
+		const bool bStarted = ProcessHandle.IsValid();
+		if (bStarted)
+		{
+			FPlatformProcess::WaitForProc(ProcessHandle);
+
+			if (!FPlatformProcess::GetProcReturnCode(
+					ProcessHandle,
+					&OutReturnCode))
+			{
+				OutReturnCode = INDEX_NONE;
+			}
+
+			FPlatformProcess::CloseProc(ProcessHandle);
+		}
+		else
+		{
+			OutReturnCode = INDEX_NONE;
+		}
+
+		OutOutput.Reset();
+		if (IFileManager::Get().FileExists(*CapturePath))
+		{
+			FFileHelper::LoadFileToString(OutOutput, *CapturePath);
+		}
+
+		IFileManager::Get().Delete(*WrapperPath, false, true, true);
+		IFileManager::Get().Delete(*CapturePath, false, true, true);
+
+		return bStarted;
+	}
+
+	FString GetProcessOutputTail(const FString& Output)
+	{
+		constexpr int32 MaxDialogChars = 6000;
+		if (Output.Len() <= MaxDialogChars)
+		{
+			return Output;
+		}
+
+		return TEXT("...\n") + Output.Right(MaxDialogChars);
+	}
+
+	bool EnsureCrimeForgeAutomationReady(
+		const FString& ProjectPath,
+		const FString& ScriptDir)
+	{
+		IFileManager& FileManager = IFileManager::Get();
+
+		if (!FileManager.DirectoryExists(*ScriptDir))
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Error,
+				TEXT("CrimeForge Automation script directory does not exist: %s"),
+				*ScriptDir);
+
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::FromString(
+					FString::Printf(
+						TEXT(
+							"CrimeForge could not find its AutomationTool scripts:\n\n%s\n\n"
+							"Packaging cannot continue."),
+						*ScriptDir)));
+
+			return false;
+		}
+
+		const FString PackagePluginSource =
+			FPaths::Combine(ScriptDir, TEXT("PackagePlugin.cs"));
+
+		if (!FileManager.FileExists(*PackagePluginSource))
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Error,
+				TEXT("CrimeForge PackagePlugin source does not exist: %s"),
+				*PackagePluginSource);
+
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::FromString(
+					FString::Printf(
+						TEXT(
+							"CrimeForge could not find PackagePlugin.cs:\n\n%s\n\n"
+							"Packaging cannot continue."),
+						*PackagePluginSource)));
+
+			return false;
+		}
+
+		const FString AutomationDll =
+			GetCrimeForgeAutomationDllPath();
+		const FString MarkerFile =
+			GetCrimeForgeAutomationBootstrapMarkerPath();
+
+		const FDateTime NewestSourceTimestamp =
+			GetNewestCrimeForgeAutomationSourceTimestamp(ScriptDir);
+		const FDateTime DllTimestamp =
+			FileManager.FileExists(*AutomationDll)
+				? FileManager.GetTimeStamp(*AutomationDll)
+				: FDateTime::MinValue();
+		const FDateTime MarkerTimestamp =
+			FileManager.FileExists(*MarkerFile)
+				? FileManager.GetTimeStamp(*MarkerFile)
+				: FDateTime::MinValue();
+
+		const bool bBootstrapRequired =
+			!FileManager.FileExists(*AutomationDll) ||
+			!FileManager.FileExists(*MarkerFile) ||
+			DllTimestamp < NewestSourceTimestamp ||
+			MarkerTimestamp < NewestSourceTimestamp;
+
+		if (!bBootstrapRequired)
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Verbose,
+				TEXT("CrimeForge AutomationTool bootstrap is already valid for this engine."));
+			return true;
+		}
+
+		const FString RunUATBat =
+			FPaths::ConvertRelativePathToFull(
+				FPaths::Combine(
+					FPaths::EngineDir(),
+					TEXT("Build/BatchFiles/RunUAT.bat")));
+
+		if (!FileManager.FileExists(*RunUATBat))
+		{
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::FromString(
+					FString::Printf(
+						TEXT(
+							"CrimeForge first-time setup could not find RunUAT.bat:\n\n%s"),
+						*RunUATBat)));
+			return false;
+		}
+
+		UE_LOG(
+			LogCrimeForge,
+			Display,
+			TEXT(
+				"CrimeForge AutomationTool bootstrap is missing or stale. "
+				"Running one-time setup for the current engine..."));
+
+		const FString BootstrapArguments =
+			FString::Printf(
+				TEXT(
+					"-ScriptsForProject=\"%s\" -ScriptDir=\"%s\" -List"),
+				*ProjectPath,
+				*ScriptDir);
+
+		int32 ReturnCode = INDEX_NONE;
+		FString Output;
+
+		const bool bStarted = RunBatchFileAndCapture(
+			RunUATBat,
+			BootstrapArguments,
+			ReturnCode,
+			Output,
+			TEXT("Preparing AutomationTool integration..."),
+			TEXT("Compiling and registering CrimeForge PackagePlugin for this engine."),
+			TEXT("PackagePlugin is registered and ready."));
+
+		const int32 CrimeForgeSection =
+			Output.Find(
+				TEXT("CrimeForge.Automation:"),
+				ESearchCase::CaseSensitive);
+
+		const bool bPackagePluginRegistered =
+			CrimeForgeSection != INDEX_NONE &&
+			Output.Mid(CrimeForgeSection, 512).Contains(
+				TEXT("PackagePlugin"),
+				ESearchCase::CaseSensitive);
+
+		if (!bStarted ||
+			ReturnCode != 0 ||
+			!bPackagePluginRegistered ||
+			!FileManager.FileExists(*AutomationDll))
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Error,
+				TEXT(
+					"CrimeForge AutomationTool bootstrap failed. "
+					"Started=%s ReturnCode=%d PackagePlugin=%s DLL=%s"),
+				bStarted ? TEXT("true") : TEXT("false"),
+				ReturnCode,
+				bPackagePluginRegistered ? TEXT("found") : TEXT("missing"),
+				FileManager.FileExists(*AutomationDll)
+					? TEXT("present")
+					: TEXT("missing"));
+
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::FromString(
+					FString::Printf(
+						TEXT(
+							"CrimeForge could not complete its one-time AutomationTool setup.\n\n"
+							"Exit code: %d\nPackagePlugin: %s\nAutomation DLL: %s\n\n%s"),
+						ReturnCode,
+						bPackagePluginRegistered ? TEXT("Found") : TEXT("Not found"),
+						FileManager.FileExists(*AutomationDll) ? TEXT("Found") : TEXT("Not found"),
+						*GetProcessOutputTail(Output))));
+
+			return false;
+		}
+
+		FileManager.MakeDirectory(
+			*FPaths::GetPath(MarkerFile),
+			true);
+
+		const FString MarkerContents =
+			FString::Printf(
+				TEXT(
+					"Engine=%s\nScriptDir=%s\nAutomationDll=%s\n"),
+				*FPaths::ConvertRelativePathToFull(FPaths::EngineDir()),
+				*ScriptDir,
+				*AutomationDll);
+
+		if (!FFileHelper::SaveStringToFile(
+				MarkerContents,
+				*MarkerFile))
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Warning,
+				TEXT(
+					"CrimeForge AutomationTool bootstrap succeeded, but its ready marker "
+					"could not be written: %s"),
+				*MarkerFile);
+		}
+
+		UE_LOG(
+			LogCrimeForge,
+			Display,
+			TEXT("CrimeForge AutomationTool bootstrap completed. PackagePlugin is registered."));
+
+		return true;
+	}
+
+	bool EnsureUnrealPakReady()
+	{
+#if PLATFORM_WINDOWS
+		IFileManager& FileManager = IFileManager::Get();
+
+		const FString UnrealPakExe =
+			FPaths::ConvertRelativePathToFull(
+				FPaths::Combine(
+					FPaths::EngineDir(),
+					TEXT("Binaries/Win64/UnrealPak.exe")));
+
+		if (FileManager.FileExists(*UnrealPakExe))
+		{
+			return true;
+		}
+
+		const FString BuildBat =
+			FPaths::ConvertRelativePathToFull(
+				FPaths::Combine(
+					FPaths::EngineDir(),
+					TEXT("Build/BatchFiles/Build.bat")));
+
+		if (!FileManager.FileExists(*BuildBat))
+		{
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::FromString(
+					FString::Printf(
+						TEXT(
+							"CrimeForge requires UnrealPak.exe, but it is missing and this engine "
+							"does not contain Build.bat.\n\nExpected UnrealPak:\n%s"),
+						*UnrealPakExe)));
+			return false;
+		}
+
+		UE_LOG(
+			LogCrimeForge,
+			Display,
+			TEXT(
+				"UnrealPak.exe is missing from the current source engine. "
+				"Building the UnrealPak target once..."));
+
+		int32 ReturnCode = INDEX_NONE;
+		FString Output;
+
+		const bool bStarted = RunBatchFileAndCapture(
+			BuildBat,
+			TEXT("UnrealPak Win64 Development -WaitMutex"),
+			ReturnCode,
+			Output,
+			TEXT("Preparing UnrealPak..."),
+			TEXT("UnrealPak is missing from this source build, so CrimeForge is building it now."),
+			TEXT("UnrealPak has been built and is ready."));
+
+		if (!bStarted ||
+			ReturnCode != 0 ||
+			!FileManager.FileExists(*UnrealPakExe))
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Error,
+				TEXT(
+					"CrimeForge could not build UnrealPak. Started=%s ReturnCode=%d Path=%s"),
+				bStarted ? TEXT("true") : TEXT("false"),
+				ReturnCode,
+				*UnrealPakExe);
+
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::FromString(
+					FString::Printf(
+						TEXT(
+							"CrimeForge requires UnrealPak.exe for staging, but the automatic "
+							"source-engine build failed.\n\nExit code: %d\n\n%s"),
+						ReturnCode,
+						*GetProcessOutputTail(Output))));
+
+			return false;
+		}
+
+		UE_LOG(
+			LogCrimeForge,
+			Display,
+			TEXT("UnrealPak first-time setup completed: %s"),
+			*UnrealPakExe);
+#endif
+
+		return true;
+	}
+
 }
 
 
@@ -3546,6 +4076,21 @@ void SCrimeForgeModEntry::PackageMod(const TArray<TSharedPtr<SCrimeForgeModEntry
         ? FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath())
         : FPaths::RootDir() / FApp::GetProjectName() / FApp::GetProjectName() + TEXT(".uproject");
 
+    const FString CrimeForgeAutomationScriptDir =
+        ResolveCrimeForgeAutomationScriptDir();
+
+    if (!EnsureCrimeForgeAutomationReady(
+            ProjectPath,
+            CrimeForgeAutomationScriptDir))
+    {
+        return;
+    }
+
+    if (!EnsureUnrealPakReady())
+    {
+        return;
+    }
+
     FString AdditionalUATArguments;
     if (Settings->bCopyModsToGame) {
         AdditionalUATArguments.Append(TEXT("-CopyToGameDir "));
@@ -3681,9 +4226,21 @@ void SCrimeForgeModEntry::PackageMod(const TArray<TSharedPtr<SCrimeForgeModEntry
             TEXT("-log=\"%s\" "),
             *UATLogFile));
 
+    /*
+     * PackagePlugin lives in CrimeForge.Automation. The one-time bootstrap
+     * above compiles/registers it for this engine; CreateUatTask remains the
+     * normal packaging path and can safely use its automatic -nocompile flags.
+     */
+    UE_LOG(
+        LogCrimeForge,
+        Display,
+        TEXT("Using CrimeForge Automation ScriptDir: %s"),
+        *CrimeForgeAutomationScriptDir);
+
     const FString CommandLine = FString::Printf(
-        TEXT("-ScriptsForProject=\"%s\" PackagePlugin -Project=\"%s\" -PluginName=\"%s\" -GameDir=\"%s\" %s"),
+        TEXT("-ScriptsForProject=\"%s\" -ScriptDir=\"%s\" PackagePlugin -Project=\"%s\" -PluginName=\"%s\" -GameDir=\"%s\" %s"),
         *ProjectPath,
+        *CrimeForgeAutomationScriptDir,
         *ProjectPath,
         *PluginName,
         *GamePath,
