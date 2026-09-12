@@ -2,9 +2,19 @@
 
 A community Unreal Engine modding project for **PAYDAY 3**, designed to provide a more complete development environment for creating everything from simple asset replacements to full logic mods, custom HUDs, and custom heists.
 
-PD3-Modkit combines a reconstructed C++ project, an updated UE5-compatible logic mod loader, an extended version of Alpakit, and reusable mod templates into a single Unreal Engine project.
+PD3-Modkit combines a reconstructed C++ project, an updated UE5-compatible logic mod loader, CrimeForge, and reusable mod templates into a single Unreal Engine project.
 
 > **Work in progress:** PD3-Modkit is actively being developed and some systems, APIs, templates, and workflows may change.
+
+## Required Unreal Engine Build
+
+PD3-Modkit requires the custom **UE5-PD3 Unreal Engine 5.5.4 compatibility build**:
+
+**[Download UE5-PD3 5.5.4](https://github.com/NadzW/UnrealEngine-PD3Compatibility/releases)**
+
+The stock Epic Games Unreal Engine 5.5.4 build is **not supported** for this project. UE5-PD3 contains PAYDAY 3 compatibility changes required to correctly handle game asset serialization and material behavior. Using a stock 5.5.4 build can result in serialization errors when loading PAYDAY 3-derived assets and material compatibility/rendering issues.
+
+The precompiled Installed Build is recommended so you do not need to compile the modified engine from source.
 
 ---
 
@@ -63,9 +73,9 @@ PDML includes support for mod configuration/settings, allowing mods to expose op
 
 ---
 
-## Updated Alpakit
+## CrimeForge
 
-PD3-Modkit includes a heavily updated version of **Alpakit** designed around modern PAYDAY 3 modding.
+PD3-Modkit includes **CrimeForge**, the packaging tool designed around modern PAYDAY 3 modding.
 
 The updated packaging pipeline supports both:
 
@@ -85,7 +95,7 @@ This is ideal for logic mods and mods that introduce completely new content.
 
 ### Asset Replacement Mods
 
-The updated Alpakit can also package assets intended to replace assets under the game's `/Game` mount point.
+CrimeForge can also package assets intended to replace assets under the game's `/Game` mount point.
 
 This allows a single mod plugin to contain both:
 
@@ -146,7 +156,7 @@ Mods/
     ├── Config/
 ```
 
-while replacement assets can be assigned to their corresponding game paths through the updated Alpakit/PAL workflow.
+while replacement assets can be assigned to their corresponding game paths through the CrimeForge/PAL workflow.
 
 ---
 
@@ -156,7 +166,7 @@ PD3-Modkit makes use of Unreal Engine's **Primary Asset Label / Asset Manager** 
 
 For mods containing replacement assets, the Primary Asset Label can manage both plugin assets and assets targeting the game's normal `/Game` paths.
 
-Alpakit detects when a mod manages content outside of its own plugin directory and automatically enables the required packaging path.
+CrimeForge detects when a mod manages content outside of its own plugin directory and automatically enables the required packaging path.
 
 This means developers do not have to manually choose between an "asset mod" and a "logic mod" packaging system.
 
@@ -175,7 +185,7 @@ Add Blueprints / UI / Data
     ↓
 Optionally replace existing game assets
     ↓
-Package with Alpakit
+Package with CrimeForge
     ↓
 Install
 ```
@@ -205,10 +215,12 @@ Current and future work includes:
 
 You will need:
 
-* Unreal Engine matching the version currently used by PAYDAY 3
+* **[UE5-PD3 5.5.4 compatibility build](https://github.com/NadzW/UnrealEngine-PD3Compatibility/releases)** — required for PAYDAY 3 serialization and material compatibility
 * A legitimate installation of PAYDAY 3
 * Visual Studio / C++ development tools
 * Basic familiarity with Unreal Engine
+
+> **Important:** Do not use the stock Epic Games UE5.5.4 build with PD3-Modkit. The custom UE5-PD3 build contains engine-level compatibility changes needed by the project.
 
 Some advanced mod types may additionally require tools commonly used by the PAYDAY 3 modding community.
 
@@ -216,21 +228,23 @@ Some advanced mod types may additionally require tools commonly used by the PAYD
 
 ## Getting Started
 
-1. Clone or download **PD3-Modkit**.
+1. Download and install the **[UE5-PD3 5.5.4 compatibility build](https://github.com/NadzW/UnrealEngine-PD3Compatibility/releases)**. Use the installer or follow the manual installation instructions on the release page.
 
-2. Open the included Unreal Engine project.
+2. Clone or download **PD3-Modkit**.
 
-3. Allow Unreal Engine to compile any required project or plugin modules.
+3. Associate `PAYDAY3.uproject` with the installed **UE5-PD3** build and open the project.
 
-4. Create a mod using one of the included templates or create a new mod plugin.
+4. Allow Unreal Engine to compile any required project or plugin modules.
 
-5. Add your assets beneath the mod's `Content` directory.
+5. Create a mod using one of the included templates or create a new mod plugin.
 
-6. Configure the mod's Primary Asset Label where required.
+6. Add your assets beneath the mod's `Content` directory.
 
-7. Use **Alpakit** from inside Unreal Engine to package the mod.
+7. Configure the mod's Primary Asset Label where required.
 
-8. Install the generated mod into your PAYDAY 3 mod directory.
+8. Use **CrimeForge** from inside Unreal Engine to package the mod.
+
+9. Install the generated mod into your PAYDAY 3 mod directory.
 
 More detailed guides for individual mod types will be added as development continues.
 
@@ -252,9 +266,9 @@ Used as part of the process for generating the reconstructed Unreal Engine proje
 
 https://github.com/Archengius/UE4GameProjectGenerator
 
-### Alpakit
+### CrimeForge
 
-The project contains a modified and extended version of Alpakit adapted for the PD3-Modkit workflow and newer PAYDAY 3 Unreal Engine versions.
+**CrimeForge** is the packaging tool included with PD3-Modkit, providing the project's mod packaging workflow for PAYDAY 3.
 
 Additional credits and upstream attribution should be retained where applicable within the individual plugins and source files.
 
