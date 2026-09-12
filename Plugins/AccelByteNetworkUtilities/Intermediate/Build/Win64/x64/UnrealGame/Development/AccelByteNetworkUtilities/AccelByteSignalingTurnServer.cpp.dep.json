@@ -1,0 +1,15 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytenetworkutilities\\source\\accelbytenetworkutilities\\private\\accelbytesignalingturnserver.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\intermediate\\build\\win64\\x64\\payday3\\development\\engine\\sharedpch.engine.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytenetworkutilities\\intermediate\\build\\win64\\x64\\unrealgame\\development\\accelbytenetworkutilities\\definitions.accelbytenetworkutilities.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytenetworkutilities\\source\\accelbytenetworkutilities\\public\\accelbytesignalingturnserver.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytenetworkutilities\\intermediate\\build\\win64\\unrealgame\\inc\\accelbytenetworkutilities\\uht\\accelbytesignalingturnserver.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

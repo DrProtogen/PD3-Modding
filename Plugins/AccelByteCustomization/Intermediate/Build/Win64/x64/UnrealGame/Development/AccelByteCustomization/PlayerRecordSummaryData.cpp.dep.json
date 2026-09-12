@@ -1,0 +1,17 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\source\\accelbytecustomization\\private\\playerrecordsummarydata.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\intermediate\\build\\win64\\x64\\payday3\\development\\engine\\sharedpch.engine.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\intermediate\\build\\win64\\x64\\unrealgame\\development\\accelbytecustomization\\definitions.accelbytecustomization.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\source\\accelbytecustomization\\public\\playerrecordsummarydata.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\source\\accelbytecustomization\\public\\playerrecordprogresssummary.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\intermediate\\build\\win64\\unrealgame\\inc\\accelbytecustomization\\uht\\playerrecordprogresssummary.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\intermediate\\build\\win64\\unrealgame\\inc\\accelbytecustomization\\uht\\playerrecordsummarydata.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

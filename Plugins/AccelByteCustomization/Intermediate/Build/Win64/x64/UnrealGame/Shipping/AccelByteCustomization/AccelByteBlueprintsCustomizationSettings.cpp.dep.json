@@ -1,0 +1,22 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\source\\accelbytecustomization\\private\\accelbyteblueprintscustomizationsettings.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\intermediate\\build\\win64\\x64\\payday3\\shipping\\engine\\sharedpch.engine.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\intermediate\\build\\win64\\x64\\unrealgame\\shipping\\accelbytecustomization\\definitions.accelbytecustomization.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\source\\accelbytecustomization\\public\\accelbyteblueprintscustomizationsettings.h",
+            "g:\\program files\\epic games\\ue_5.5\\engine\\source\\runtime\\coreuobject\\public\\uobject\\noexporttypes.h",
+            "g:\\program files\\epic games\\ue_5.5\\engine\\source\\runtime\\coreuobject\\public\\uobject\\propertyaccessutil.h",
+            "g:\\program files\\epic games\\ue_5.5\\engine\\source\\runtime\\coreuobject\\public\\serialization\\testundeclaredscriptstructobjectreferences.h",
+            "g:\\program files\\epic games\\ue_5.5\\engine\\source\\runtime\\core\\public\\math\\unitconversion.h",
+            "g:\\program files\\epic games\\ue_5.5\\engine\\source\\runtime\\core\\public\\math\\unitconversion.inl",
+            "g:\\program files\\epic games\\ue_5.5\\engine\\source\\runtime\\core\\public\\internationalization\\polyglottextdata.h",
+            "g:\\program files\\epic games\\ue_5.5\\engine\\source\\runtime\\coreuobject\\public\\assetregistry\\arfilter.h",
+            "f:\\paydaymods\\ue5\\projects\\hudcore\\payday3\\plugins\\accelbytecustomization\\intermediate\\build\\win64\\unrealgame\\inc\\accelbytecustomization\\uht\\accelbyteblueprintscustomizationsettings.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.5",
+	"EngineAssociation": "{E701B8D7-4359-7111-A345-20B7B4F86A11}",
 	"Category": "Samples",
 	"Description": "",
 	"Modules": [
@@ -343,7 +343,7 @@
 		},
 		{
 			"Name": "FSR",
-			"Enabled": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64",
 				"WinGDK"
