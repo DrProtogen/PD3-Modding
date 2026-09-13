@@ -855,11 +855,22 @@ namespace
 					+ SVerticalBox::Slot()
 					.AutoHeight()
 					[
-						SNew(STextBlock)
-							.Text(
-								FText::FromString(
-									Summary))
-							.AutoWrapText(true)
+						// Keep long PASS 2 package/error lists from growing the
+						// failure window and squeezing the actual UAT log view.
+						SNew(SBox)
+							.MaxDesiredHeight(240.0f)
+							[
+								SNew(SScrollBox)
+								.Orientation(Orient_Vertical)
+								+ SScrollBox::Slot()
+								[
+									SNew(STextBlock)
+										.Text(
+											FText::FromString(
+												Summary))
+										.AutoWrapText(true)
+								]
+							]
 					]
 
 					+ SVerticalBox::Slot()
