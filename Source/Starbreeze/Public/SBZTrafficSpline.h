@@ -1,6 +1,8 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "SBZSpline.h"
+#include "ESBZTrafficSplineType.h"
+#include "ESBZTrafficVehicleType.h"
 #include "SBZTrafficSpline.generated.h"
 
 class USBZTrafficManager;
@@ -13,10 +15,10 @@ private:
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Transient, meta=(AllowPrivateAccess=true))
     USBZTrafficManager* TrafficManager;
     
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true, Bitmask, BitmaskEnum = ESBZTrafficSplineType))
     int32 SplineTypeFlags;
     
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true, Bitmask, BitmaskEnum = ESBZTrafficVehicleType))
     int32 VehicleTypeFlags;
     
 public:

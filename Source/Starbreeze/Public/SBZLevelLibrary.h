@@ -16,7 +16,7 @@ public:
     UFUNCTION(BlueprintCallable)
     static ULevel* GetLevel(AActor* InActor);
     
-    UFUNCTION(BlueprintCallable)
+    UFUNCTION(BlueprintCallable, meta = (DeterminesOutputType = "ActorClass", DynamicOutputParam = "OutActors"))
     static void GetAllActorsOfClassInLevel(ULevel* Level, TSubclassOf<AActor> ActorClass, TArray<AActor*>& OutActors);
     
 };

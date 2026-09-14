@@ -43,15 +43,26 @@ public:
     
     UFUNCTION(BlueprintCallable)
     void SetStyle(USBZTextStyle* InStyle);
+
+    USBZTextStyle* GetStyle();
     
     UFUNCTION(BlueprintCallable)
     void SetScrollingEnabled(bool bInIsScrollingEnabled);
     
     UFUNCTION(BlueprintCallable)
     void SetColorStyle(USBZColorStyle* InStyle);
+
+    USBZColorStyle* GetColorStyle();
     
     UFUNCTION(BlueprintCallable)
     void ResetScrollState();
     
+#if WITH_EDITORONLY_DATA
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+    virtual TSharedRef<SWidget> RebuildWidget();
+
+private:
+    void UpdateTextProperties();
 };
 
