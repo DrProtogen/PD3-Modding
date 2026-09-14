@@ -10,6 +10,11 @@
             "name": "Logic Mod",
             "description": "Create a mod plugin that contains the basic assets needed for a blueprint logic mod.",
             "path": "LogicMod"
+        },
+        {
+            "name": "Custom Heist",
+            "description": "Create a mod plugin that contains the basic assets needed for a custom heist.",
+            "path": "CustomHeist"
         }
     ]
 }

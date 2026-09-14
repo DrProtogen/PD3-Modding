@@ -25,6 +25,8 @@
 #include "Engine/Blueprint.h"
 #include "UObject/UnrealType.h"
 #include "UObject/StructOnScope.h"
+#include "UObject/SoftObjectPtr.h"
+#include "Engine/World.h"
 
 #define LOCTEXT_NAMESPACE "NewModWizard"
 
@@ -802,6 +804,521 @@ namespace
 		return true;
 	}
 
+
+	static bool IsClassOrChildOfNamedClass(
+		UClass* CandidateClass,
+		const FString& RequestedClassName)
+	{
+		if (!CandidateClass)
+		{
+			return false;
+		}
+
+		const FString RequestedKey =
+			NormalizeMetadataPropertyKey(RequestedClassName);
+
+		for (UClass* Class = CandidateClass;
+			 Class;
+			 Class = Class->GetSuperClass())
+		{
+			if (NormalizeMetadataPropertyKey(Class->GetName()) == RequestedKey)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	static TArray<UObject*> FindHeistDataAssetsInPlugin(
+		const FString& PluginContentPath)
+	{
+		TArray<UObject*> Result;
+
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+				TEXT("AssetRegistry")
+			);
+
+		IAssetRegistry& AssetRegistry =
+			AssetRegistryModule.Get();
+
+		TArray<FString> PathsToScan;
+		PathsToScan.Add(PluginContentPath);
+
+		AssetRegistry.ScanPathsSynchronous(
+			PathsToScan,
+			true
+		);
+
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByPath(
+			FName(*PluginContentPath),
+			Assets,
+			true
+		);
+
+		UClass* HeistDataAssetClass =
+			FindObject<UClass>(
+				nullptr,
+				TEXT("/Script/Starbreeze.PD3HeistDataAsset")
+			);
+
+		for (const FAssetData& AssetData : Assets)
+		{
+			UObject* Asset = AssetData.GetAsset();
+
+			if (!Asset)
+			{
+				continue;
+			}
+
+			const bool bIsHeistDataAsset =
+				HeistDataAssetClass
+					? Asset->IsA(HeistDataAssetClass)
+					: IsClassOrChildOfNamedClass(
+						Asset->GetClass(),
+						TEXT("PD3HeistDataAsset")
+					);
+
+			if (bIsHeistDataAsset)
+			{
+				Result.AddUnique(Asset);
+			}
+		}
+
+		Result.Sort(
+			[](const UObject& A, const UObject& B)
+			{
+				return A.GetPathName() < B.GetPathName();
+			}
+		);
+
+		return Result;
+	}
+
+	static bool PopulateObjectArray(
+		UObject* Owner,
+		FProperty* Property,
+		const TArray<UObject*>& Values)
+	{
+		if (!Owner || !Property)
+		{
+			return false;
+		}
+
+		FArrayProperty* ArrayProperty =
+			CastField<FArrayProperty>(Property);
+
+		if (!ArrayProperty)
+		{
+			return false;
+		}
+
+		FSoftObjectProperty* SoftObjectProperty =
+			CastField<FSoftObjectProperty>(
+				ArrayProperty->Inner
+			);
+
+		FObjectPropertyBase* ObjectProperty =
+			SoftObjectProperty
+				? nullptr
+				: CastField<FObjectPropertyBase>(
+					ArrayProperty->Inner
+				);
+
+		if (!SoftObjectProperty && !ObjectProperty)
+		{
+			return false;
+		}
+
+		FScriptArrayHelper ArrayHelper(
+			ArrayProperty,
+			ArrayProperty->ContainerPtrToValuePtr<void>(
+				Owner
+			)
+		);
+
+		ArrayHelper.EmptyValues();
+
+		for (UObject* Value : Values)
+		{
+			if (!Value)
+			{
+				continue;
+			}
+
+			UClass* ExpectedClass =
+				SoftObjectProperty
+					? SoftObjectProperty->PropertyClass
+					: ObjectProperty->PropertyClass;
+
+			if (ExpectedClass && !Value->IsA(ExpectedClass))
+			{
+				UE_LOG(
+					LogCrimeForge,
+					Warning,
+					TEXT(
+						"Skipping %s while populating %s: "
+						"asset is not compatible with %s."
+					),
+					*Value->GetPathName(),
+					*Property->GetName(),
+					*ExpectedClass->GetName()
+				);
+				continue;
+			}
+
+			const int32 Index = ArrayHelper.AddValue();
+			void* ElementPtr = ArrayHelper.GetRawPtr(Index);
+
+			if (SoftObjectProperty)
+			{
+				FSoftObjectPtr* ObjectPtr =
+					static_cast<FSoftObjectPtr*>(ElementPtr);
+				*ObjectPtr = FSoftObjectPath(Value);
+			}
+			else
+			{
+				ObjectProperty->SetObjectPropertyValue(
+					ElementPtr,
+					Value
+				);
+			}
+		}
+
+		return true;
+	}
+
+	static bool FindTemplateLevelInPlugin(
+		const FString& PluginContentPath,
+		const FString& PluginName,
+		FAssetData& OutLevelAsset)
+	{
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+				TEXT("AssetRegistry")
+			);
+
+		IAssetRegistry& AssetRegistry =
+			AssetRegistryModule.Get();
+
+		TArray<FString> PathsToScan;
+		PathsToScan.Add(PluginContentPath);
+
+		AssetRegistry.ScanPathsSynchronous(
+			PathsToScan,
+			true
+		);
+
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByPath(
+			FName(*PluginContentPath),
+			Assets,
+			true
+		);
+
+		const FString RenamedLevelName =
+			FString::Printf(TEXT("LVL_%s"), *PluginName);
+
+		const FString PlaceholderLevelName =
+			TEXT("PLACEHOLDER_LVL_MODNAME");
+
+		TArray<FAssetData> WorldAssets;
+
+		for (const FAssetData& AssetData : Assets)
+		{
+			const bool bIsWorld =
+				AssetData.AssetClassPath ==
+					UWorld::StaticClass()->GetClassPathName();
+
+			if (!bIsWorld)
+			{
+				continue;
+			}
+
+			const FString AssetName =
+				AssetData.AssetName.ToString();
+
+			if (AssetName.Equals(
+					RenamedLevelName,
+					ESearchCase::IgnoreCase))
+			{
+				OutLevelAsset = AssetData;
+				return true;
+			}
+
+			if (AssetName.Equals(
+					PlaceholderLevelName,
+					ESearchCase::IgnoreCase))
+			{
+				OutLevelAsset = AssetData;
+				return true;
+			}
+
+			WorldAssets.Add(AssetData);
+		}
+
+		// A custom-heist template normally contains exactly one level. If the
+		// expected placeholder/final name was changed manually, still use the
+		// only world rather than leaving LevelPath unset.
+		if (WorldAssets.Num() == 1)
+		{
+			OutLevelAsset = WorldAssets[0];
+			return true;
+		}
+
+		return false;
+	}
+
+	static bool SetAssetReferenceValue(
+		UObject* Owner,
+		FProperty* Property,
+		UObject* Asset)
+	{
+		if (!Owner || !Property || !Asset)
+		{
+			return false;
+		}
+
+		void* ValuePtr =
+			Property->ContainerPtrToValuePtr<void>(Owner);
+
+		if (FSoftObjectProperty* SoftObjectProperty =
+				CastField<FSoftObjectProperty>(Property))
+		{
+			if (SoftObjectProperty->PropertyClass &&
+				!Asset->IsA(SoftObjectProperty->PropertyClass))
+			{
+				return false;
+			}
+
+			FSoftObjectPtr* ObjectPtr =
+				static_cast<FSoftObjectPtr*>(ValuePtr);
+			*ObjectPtr = FSoftObjectPath(Asset);
+			return true;
+		}
+
+		if (FObjectPropertyBase* ObjectProperty =
+				CastField<FObjectPropertyBase>(Property))
+		{
+			if (ObjectProperty->PropertyClass &&
+				!Asset->IsA(ObjectProperty->PropertyClass))
+			{
+				return false;
+			}
+
+			ObjectProperty->SetObjectPropertyValue(
+				ValuePtr,
+				Asset
+			);
+			return true;
+		}
+
+		if (FStructProperty* StructProperty =
+				CastField<FStructProperty>(Property))
+		{
+			if (StructProperty->Struct &&
+				StructProperty->Struct->GetName().Equals(
+					TEXT("SoftObjectPath"),
+					ESearchCase::IgnoreCase))
+			{
+				FSoftObjectPath* SoftPath =
+					reinterpret_cast<FSoftObjectPath*>(
+						ValuePtr
+					);
+
+				*SoftPath = FSoftObjectPath(Asset);
+				return true;
+			}
+		}
+
+		return SetMetadataTextValue(
+			Owner,
+			Property,
+			FSoftObjectPath(Asset).ToString()
+		);
+	}
+
+	static int32 PopulateHeistData(
+		UObject* ModDataAsset,
+		UClass* ModDataClass,
+		const FString& PluginContentPath,
+		const FString& PluginName)
+	{
+		if (!ModDataAsset || !ModDataClass)
+		{
+			return 0;
+		}
+
+		const TArray<UObject*> HeistDataAssets =
+			FindHeistDataAssetsInPlugin(PluginContentPath);
+
+		FProperty* HeistProperty =
+			FindMetadataProperty(
+				ModDataClass,
+				{
+					TEXT("Heist"),
+					TEXT("Heists")
+				}
+			);
+
+		int32 FieldsUpdated = 0;
+
+		if (HeistProperty)
+		{
+			if (PopulateObjectArray(
+					ModDataAsset,
+					HeistProperty,
+					HeistDataAssets))
+			{
+				++FieldsUpdated;
+
+				UE_LOG(
+					LogCrimeForge,
+					Display,
+					TEXT(
+						"%s: populated Heists with %d "
+						"PD3HeistDataAsset asset(s)."
+					),
+					*PluginName,
+					HeistDataAssets.Num()
+				);
+			}
+			else
+			{
+				UE_LOG(
+					LogCrimeForge,
+					Warning,
+					TEXT(
+						"%s: found the Heist/Heists property, "
+						"but it is not a compatible object array."
+					),
+					*PluginName
+				);
+			}
+		}
+		else
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Verbose,
+				TEXT("%s: Data Asset has no Heist/Heists property."),
+				*PluginName
+			);
+		}
+
+		if (HeistDataAssets.Num() == 0)
+		{
+			return FieldsUpdated;
+		}
+
+		FAssetData LevelAssetData;
+		if (!FindTemplateLevelInPlugin(
+				PluginContentPath,
+				PluginName,
+				LevelAssetData))
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Warning,
+				TEXT(
+					"%s: found %d heist Data Asset(s), but no "
+					"LVL_%s / PLACEHOLDER_LVL_MODNAME level was found."
+				),
+				*PluginName,
+				HeistDataAssets.Num(),
+				*PluginName
+			);
+			return FieldsUpdated;
+		}
+
+		UObject* LevelAsset = LevelAssetData.GetAsset();
+		if (!LevelAsset)
+		{
+			UE_LOG(
+				LogCrimeForge,
+				Warning,
+				TEXT(
+					"%s: failed to load level %s for LevelPath population."
+				),
+				*PluginName,
+				*LevelAssetData.GetObjectPathString()
+			);
+			return FieldsUpdated;
+		}
+
+		UEditorAssetSubsystem* AssetSubsystem =
+			GEditor
+				? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>()
+				: nullptr;
+
+		for (UObject* HeistDataAsset : HeistDataAssets)
+		{
+			if (!HeistDataAsset)
+			{
+				continue;
+			}
+
+			FProperty* LevelPathProperty =
+				FindMetadataProperty(
+					HeistDataAsset->GetClass(),
+					{
+						TEXT("LevelPath"),
+						TEXT("Level Path")
+					}
+				);
+
+			if (!LevelPathProperty ||
+				!SetAssetReferenceValue(
+					HeistDataAsset,
+					LevelPathProperty,
+					LevelAsset))
+			{
+				UE_LOG(
+					LogCrimeForge,
+					Warning,
+					TEXT(
+						"%s: could not set LevelPath on %s."
+					),
+					*PluginName,
+					*HeistDataAsset->GetPathName()
+				);
+				continue;
+			}
+
+			HeistDataAsset->MarkPackageDirty();
+
+			if (AssetSubsystem)
+			{
+				const FString HeistPackagePath =
+					HeistDataAsset->GetOutermost()->GetName();
+
+				if (!AssetSubsystem->SaveAsset(HeistPackagePath))
+				{
+					UE_LOG(
+						LogCrimeForge,
+						Warning,
+						TEXT("%s: failed to save heist Data Asset %s."),
+						*PluginName,
+						*HeistPackagePath
+					);
+				}
+			}
+
+			UE_LOG(
+				LogCrimeForge,
+				Display,
+				TEXT("%s: set %s LevelPath to %s."),
+				*PluginName,
+				*HeistDataAsset->GetName(),
+				*LevelAsset->GetPathName()
+			);
+		}
+
+		return FieldsUpdated;
+	}
+
 	static bool PopulateGeneratedModDataAsset(
 		const FString& PluginName)
 	{
@@ -1146,6 +1663,13 @@ namespace
 			);
 		}
 
+		FieldsUpdated += PopulateHeistData(
+			DataAsset,
+			DataClass,
+			PluginContentPath,
+			PluginName
+		);
+
 		DataAsset->MarkPackageDirty();
 
 		UEditorAssetSubsystem* AssetSubsystem =
@@ -1465,43 +1989,110 @@ void FModWizardDefinition::RenameTemplateAssetsForMods(const FString& PluginName
 
 	TArray<FAssetRenameData> RenameDataList;
 
+	const auto ResolvePlaceholderName =
+		[&PluginName](const FString& InName, FString& OutName) -> bool
+		{
+			if (!InName.StartsWith(TEXT("PLACEHOLDER_")) ||
+				!InName.EndsWith(TEXT("MODNAME")))
+			{
+				OutName = InName;
+				return false;
+			}
+
+			// Same naming rule used for template assets:
+			//   PLACEHOLDER_DA_HEIST_MODNAME -> DA_HEIST_<PluginName>
+			//   PLACEHOLDER_MODNAME          -> <PluginName>
+			OutName = InName.RightChop(12);
+			OutName = OutName.LeftChop(7);
+			OutName += PluginName;
+			return true;
+		};
+
+	const auto ResolvePlaceholderPackagePath =
+		[&ResolvePlaceholderName](
+			const FString& InPackagePath,
+			FString& OutPackagePath) -> bool
+		{
+			TArray<FString> Segments;
+			InPackagePath.ParseIntoArray(
+				Segments,
+				TEXT("/"),
+				true
+			);
+
+			bool bChanged = false;
+
+			for (FString& Segment : Segments)
+			{
+				FString ResolvedSegment;
+				if (ResolvePlaceholderName(
+						Segment,
+						ResolvedSegment))
+				{
+					Segment = MoveTemp(ResolvedSegment);
+					bChanged = true;
+				}
+			}
+
+			OutPackagePath =
+				(InPackagePath.StartsWith(TEXT("/"))
+					? TEXT("/")
+					: TEXT("")) +
+				FString::Join(Segments, TEXT("/"));
+
+			return bChanged;
+		};
+
+	int32 AssetsWithRenamedNames = 0;
+	int32 AssetsMovedFromPlaceholderFolders = 0;
+
 	for (const FAssetData& AssetData : AssetDataArray)
 	{
 		const FString OldName = AssetData.AssetName.ToString();
+		const FString OldPackagePath = AssetData.PackagePath.ToString();
 
-		// Check if asset name starts with "PLACEHOLDER_" and ends with "MODNAME".
-		if (OldName.StartsWith(TEXT("PLACEHOLDER_")) &&
-			OldName.EndsWith(TEXT("MODNAME")))
-		{
-			// Remove prefix "PLACEHOLDER_".
-			FString NewName = OldName.RightChop(12);
+		FString NewName;
+		const bool bRenameAsset =
+			ResolvePlaceholderName(OldName, NewName);
 
-			// Remove suffix "MODNAME".
-			NewName = NewName.LeftChop(7);
-
-			// Append the actual plugin name.
-			NewName += PluginName;
-
-			UObject* Asset = AssetData.GetAsset();
-			if (!Asset)
-			{
-				UE_LOG(
-					LogTemp,
-					Warning,
-					TEXT("Could not load template asset '%s' for rename."),
-					*AssetData.GetObjectPathString()
-				);
-				continue;
-			}
-
-			RenameDataList.Add(
-				FAssetRenameData(
-					Asset,
-					AssetData.PackagePath.ToString(),
-					NewName
-				)
+		FString NewPackagePath;
+		const bool bMoveAsset =
+			ResolvePlaceholderPackagePath(
+				OldPackagePath,
+				NewPackagePath
 			);
+
+		if (!bRenameAsset && !bMoveAsset)
+		{
+			continue;
 		}
+
+		UObject* Asset = AssetData.GetAsset();
+		if (!Asset)
+		{
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("Could not load template asset '%s' for rename/move."),
+				*AssetData.GetObjectPathString()
+			);
+			continue;
+		}
+
+		RenameDataList.Add(
+			FAssetRenameData(
+				Asset,
+				bMoveAsset
+					? NewPackagePath
+					: OldPackagePath,
+				bRenameAsset
+					? NewName
+					: OldName
+			)
+		);
+
+		AssetsWithRenamedNames += bRenameAsset ? 1 : 0;
+		AssetsMovedFromPlaceholderFolders += bMoveAsset ? 1 : 0;
 	}
 
 	if (RenameDataList.Num() > 0)
@@ -1518,9 +2109,14 @@ void FModWizardDefinition::RenameTemplateAssetsForMods(const FString& PluginName
 			UE_LOG(
 				LogTemp,
 				Log,
-				TEXT("Renamed %d assets in plugin '%s'."),
+				TEXT(
+					"Renamed/moved %d template asset(s) in plugin '%s' "
+					"(%d asset-name rename(s), %d asset move(s) from placeholder folder(s))."
+				),
 				RenameDataList.Num(),
-				*PluginName
+				*PluginName,
+				AssetsWithRenamedNames,
+				AssetsMovedFromPlaceholderFolders
 			);
 		}
 		else
@@ -1538,7 +2134,10 @@ void FModWizardDefinition::RenameTemplateAssetsForMods(const FString& PluginName
 		UE_LOG(
 			LogTemp,
 			Warning,
-			TEXT("No assets matched rename criteria in plugin '%s'."),
+			TEXT(
+				"No assets or package folders matched PLACEHOLDER_*MODNAME "
+				"rename criteria in plugin '%s'."
+			),
 			*PluginName
 		);
 	}
@@ -1779,9 +2378,9 @@ void FModWizardDefinition::PluginCreated(const FString& PluginName, bool bWasSuc
 	RenameTemplateAssetsForMods(PluginName);
 
 	/*
-	 * The template assets now have their final names, so populate the
-	 * generated PDA_ModMeta instance from the .uplugin and discover any
-	 * ModActorBase-derived Blueprints under this mod.
+	 * The template assets/folders now have their final names, so populate
+	 * the generated PDA_ModMeta instance, discover ModActor classes and
+	 * custom-heist Data Assets, and repair heist LevelPath references.
 	 */
 	PopulateGeneratedModDataAsset(PluginName);
 }
