@@ -28,9 +28,19 @@ protected:
     
     UPROPERTY(AdvancedDisplay, BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
     FVector WeightedLocation;
+#if WITH_EDITORONLY_DATA
+private:
+    UPROPERTY()
+    class UArrowComponent* ArrowComponent;
+    UPROPERTY()
+    class UBillboardComponent* GoodSprite;
+public:
+    virtual void PostEditMove(bool bFinished) override;
+    virtual void OnConstruction(const FTransform& Transform) override;
+#endif
     
 public:
     ASBZPawnSpawnBase(const FObjectInitializer& ObjectInitializer);
-
+    void OnApplyLevelTransform(const FTransform& InTransform);
 };
 
