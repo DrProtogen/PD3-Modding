@@ -23,6 +23,12 @@ protected:
     
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Transient, meta=(AllowPrivateAccess=true))
     ASBZRoomVolume* SpawnGroupRoom;
+#if WITH_EDITORONLY_DATA
+private:
+    UPROPERTY()
+    class UBillboardComponent* GoodSprite;
+public:
+#endif
     
 public:
     ASBZPawnSpawnGroup(const FObjectInitializer& ObjectInitializer);
