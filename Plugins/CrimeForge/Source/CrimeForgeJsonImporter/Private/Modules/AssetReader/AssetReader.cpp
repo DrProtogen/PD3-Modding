@@ -39,7 +39,7 @@ namespace {
     // Increment whenever the embedded managed AssetReader source changes in a way that must be
     // republished. The published runtime records this revision so overwriting/updating the plugin
     // cannot silently keep loading a stale CrimeForge.AssetReader.dll from Binaries/Win64.
-    constexpr const TCHAR* AssetReaderManagedSourceRevision = TEXT("2026-09-14-blueprint-kismet-token-v6");
+    constexpr const TCHAR* AssetReaderManagedSourceRevision = TEXT("2026-09-14-msbuild-isolation-v7");
 
     struct FAssetReaderBuildResult {
         bool bLaunched = false;

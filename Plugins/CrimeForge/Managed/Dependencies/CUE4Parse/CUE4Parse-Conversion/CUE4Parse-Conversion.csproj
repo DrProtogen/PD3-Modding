@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Explicit here so restore never depends on Directory.Build.props discovery. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <RootNamespace>CUE4Parse_Conversion</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	<Description>CUE4Parse Conversion</Description>
