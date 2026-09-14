@@ -37,6 +37,7 @@ public:
     ESBZSplineType SplineType;
     
     USBZSplineComponent(const FObjectInitializer& ObjectInitializer);
+    virtual void PostLoad() override;
 
 };
 

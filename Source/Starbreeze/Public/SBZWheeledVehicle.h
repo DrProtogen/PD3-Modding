@@ -22,6 +22,7 @@
 #include "SBZWheeledVehicleOnSplineLeftDelegate.h"
 #include "SBZWheeledVehicleOnStoppedDelegate.h"
 #include "SBZWheeledVehicleReplicatedMovement.h"
+#include "ESBZVehicleLightType.h"
 #include "SBZWheeledVehicle.generated.h"
 
 class AActor;
@@ -75,7 +76,7 @@ public:
     UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
     TMap<int32, FSBZVehicleLights> LightsCPDGraph;
     
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
+    UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true, Bitmask, BitmaskEnum = ESBZVehicleLightType))
     uint8 ActiveLightsBitmask;
     
     UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(AllowPrivateAccess=true))
