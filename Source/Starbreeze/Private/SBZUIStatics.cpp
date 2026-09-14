@@ -1,4 +1,5 @@
 #include "SBZUIStatics.h"
+#include "SBZUISettings.h"
 
 USBZUIStatics::USBZUIStatics() {
 }
@@ -62,7 +63,22 @@ FSlateFontInfo USBZUIStatics::GetGlobalFont(UObject* WorldContextObject, FName F
 }
 
 FLinearColor USBZUIStatics::GetGlobalColor(UObject* WorldContextObject, FName ColorName) {
-    return FLinearColor{};
+    const USBZUISettings* Settings = GetDefault<USBZUISettings>();
+    // add LogSBZUI to replace LogTemp eventually
+    if (!Settings) {
+        UE_LOG(LogTemp, Warning, TEXT("UI Settings object is null."));
+        return FLinearColor::Transparent;
+    }
+
+    const FLinearColor* FoundColor = Settings->ColorsMap.Find(ColorName);
+
+    if (FoundColor) {
+        return *FoundColor;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("UI Statics could not find color with name: %s"), *ColorName.ToString());
+
+    return FLinearColor::Transparent;
 }
 
 int32 USBZUIStatics::GetCurrentProgressionSaveGameVersion(const UObject* WorldContextObject) {

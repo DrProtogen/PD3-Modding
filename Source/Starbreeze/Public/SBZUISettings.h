@@ -6,7 +6,7 @@
 #include "SBZUIDefaultSoundEvents.h"
 #include "SBZUISettings.generated.h"
 
-UCLASS(Blueprintable, Config=Engine)
+UCLASS(Blueprintable, Config=Starbreeze)
 class USBZUISettings : public USBZDeveloperSettings {
     GENERATED_BODY()
 public:

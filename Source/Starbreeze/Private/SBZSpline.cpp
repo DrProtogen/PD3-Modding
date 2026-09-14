@@ -7,11 +7,11 @@ ASBZSpline::ASBZSpline(const FObjectInitializer& ObjectInitializer) : Super(Obje
 }
 
 TArray<ASBZSpline*> ASBZSpline::GetOutputSplines() const {
-    return TArray<ASBZSpline*>();
+    return SplineComponent ? SplineComponent->OutputSplineActors : TArray<ASBZSpline*>();
 }
 
 TArray<ASBZSpline*> ASBZSpline::GetInputSplines() const {
-    return TArray<ASBZSpline*>();
+    return SplineComponent ? SplineComponent->InputSplineActors : TArray<ASBZSpline*>();
 }
 
 
