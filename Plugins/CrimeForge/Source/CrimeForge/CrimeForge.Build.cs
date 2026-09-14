@@ -11,6 +11,8 @@ public class CrimeForge : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new[] {
 			"Core",
+			"CoreUObject",
+			"Engine",
 		});
 		
 		PrivateDependencyModuleNames.AddRange(new[] {
@@ -19,8 +21,6 @@ public class CrimeForge : ModuleRules
 			"InputCore",
 			"UnrealEd",
 			"LevelEditor",
-			"CoreUObject",
-			"Engine",
 			"Slate",
 			"SlateCore",
 			"ExternalImagePicker",
@@ -34,7 +34,8 @@ public class CrimeForge : ModuleRules
 			"ApplicationCore",
 			"PluginUtils",
 			"ContentBrowser",
-			"ToolMenus"
+			"ToolMenus",
+			"Settings"
 		});
 	}
 }

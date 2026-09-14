@@ -4,7 +4,6 @@
 #include "CrimeForgeSettings.h"
 #include "CrimeForgeWidget.h"
 #include "ContentBrowserModule.h"
-#include "ISettingsContainer.h"
 #include "ISettingsModule.h"
 #include "ISettingsSection.h"
 #include "LevelEditor.h"
@@ -119,20 +118,20 @@ TSharedRef<SDockTab> FCrimeForgeModule::HandleSpawnModCreatorTab(const FSpawnTab
 
 void FCrimeForgeModule::RegisterSettings() const {
     if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>(TEXT("Settings"))) {
-        // Create the new category
-        ISettingsContainerPtr SettingsContainer = SettingsModule->GetContainer(TEXT("Project"));
-        SettingsContainer->DescribeCategory(TEXT("CrimeForge Settings"),
-            LOCTEXT("RuntimeWDCategoryName", "CrimeForge Settings"),
-            LOCTEXT("RuntimeWDCategoryDescription", "CrimeForge Settings. Can also be edited in the CrimeForge menu"));
+        // Remove the old CrimeForge -> Settings registration if this module is being reloaded in
+        // an editor session that previously had the pre-unified settings layout registered.
+        SettingsModule->UnregisterSettings(TEXT("Project"), TEXT("CrimeForge"), TEXT("Settings"));
 
-        // Register the settings
-        ISettingsSectionPtr SettingsSection = SettingsModule->RegisterSettings(TEXT("Project"), TEXT("CrimeForge"), TEXT("General"),
-            LOCTEXT("RuntimeGeneralSettingsName", "General"),
-            LOCTEXT("RuntimeGeneralSettingsDescription", "CrimeForge Settings. Can also be edited in the CrimeForge menu"),
+        // Register CrimeForge like a normal editor plugin: one page under Project Settings -> Plugins.
+        // The UObject property categories provide the General / JSON Importer sections within the page.
+        ISettingsSectionPtr SettingsSection = SettingsModule->RegisterSettings(
+            TEXT("Project"), TEXT("Plugins"), TEXT("CrimeForge"),
+            LOCTEXT("CrimeForgeSettingsName", "CrimeForge"),
+            LOCTEXT("CrimeForgeSettingsDescription", "CrimeForge settings for PAYDAY 3 modding, packaging, AssetReader and JSON importing."),
             UCrimeForgeSettings::Get()
         );
-        // Register the save handler to your settings, you might want to use it to
-        // validate those or just act to settings changes.
+
+        // Persist changes made through Project Settings.
         if (SettingsSection.IsValid()) {
             SettingsSection->OnModified().BindLambda([](){
                 UCrimeForgeSettings::Get()->SaveSettings();
@@ -144,7 +143,9 @@ void FCrimeForgeModule::RegisterSettings() const {
 
 void FCrimeForgeModule::UnregisterSettings() const {
     if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>(TEXT("Settings"))) {
-        SettingsModule->UnregisterSettings(TEXT("Project"), TEXT("CrimeForge"), TEXT("General"));
+        SettingsModule->UnregisterSettings(TEXT("Project"), TEXT("Plugins"), TEXT("CrimeForge"));
+        // Also clean up the legacy registration path for hot-reload/live-coding sessions.
+        SettingsModule->UnregisterSettings(TEXT("Project"), TEXT("CrimeForge"), TEXT("Settings"));
     }
 }
 

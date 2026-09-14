@@ -11,6 +11,5 @@ public:
     void Construct(const FArguments& InArgs);
 
 private:
-    TSharedPtr<IDetailsView> DetailsView;
     TSharedPtr<SCrimeForgeModEntryList> ModList;
 };
