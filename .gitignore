@@ -92,6 +92,8 @@
 !*.xcodeproj
 !*.xcconfig
 !*.vsprops
+!*.props
+!*.targets
 !*.snippet
 !Makefile
 !Makefile.*
