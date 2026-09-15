@@ -9112,4 +9112,12 @@ Binaries/Win64/EOSSDK-Win64-Shipping.dll
 !/Plugins/**/*.uasset
 !/Plugins/**/*.png
 
+# CrimeForge / CUE4Parse required build configuration
 !/Plugins/CrimeForge/*
+
+!Plugins/CrimeForge/Managed/Dependencies/CUE4Parse/Directory.Build.props
+!Plugins/CrimeForge/Managed/Dependencies/CUE4Parse/Directory.Packages.props
+
+# CUE4Parse embedded resources required by the C# projects
+!Plugins/CrimeForge/Managed/Dependencies/CUE4Parse/CUE4Parse/Resources/**
+!Plugins/CrimeForge/Managed/Dependencies/CUE4Parse/CUE4Parse-Conversion/Resources/**
