@@ -1,0 +1,27 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\private\\crimeforgenodesizechangedata.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\intermediate\\build\\win64\\x64\\payday3editor\\development\\unrealed\\sharedpch.unrealed.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgeblueprintformatter\\definitions.crimeforgeblueprintformatter.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgenodesizechangedata.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattersettings.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformattersettings.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformatterutils.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattertypes.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformatterglobals.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformatterutils.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\unrealed\\public\\edgraphnode_comment.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\unrealed\\uht\\edgraphnode_comment.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\blueprintgraph\\classes\\k2node_createdelegate.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\kismetcompiler\\public\\kismetcompilermisc.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\kismetcompiler\\public\\bpterminal.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\kismetcompiler\\public\\blueprintcompiledstatement.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\blueprintgraph\\uht\\k2node_createdelegate.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

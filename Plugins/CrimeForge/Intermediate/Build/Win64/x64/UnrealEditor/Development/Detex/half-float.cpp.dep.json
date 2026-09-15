@@ -1,0 +1,16 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\thirdparty\\detex\\thirdparty\\detex\\half-float.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\intermediate\\build\\win64\\x64\\payday3editor\\development\\coreuobject\\sharedpch.coreuobject.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\detex\\definitions.detex.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\thirdparty\\detex\\thirdparty\\detex\\half-float.h",
+            "c:\\program files (x86)\\windows kits\\10\\include\\10.0.22621.0\\ucrt\\math.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\thirdparty\\detex\\thirdparty\\detex\\detex.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

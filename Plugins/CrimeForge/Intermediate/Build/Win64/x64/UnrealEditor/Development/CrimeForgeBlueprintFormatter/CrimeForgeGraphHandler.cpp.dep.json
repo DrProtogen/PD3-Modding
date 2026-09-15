@@ -1,0 +1,42 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\private\\crimeforgegraphhandler.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\intermediate\\build\\win64\\x64\\payday3editor\\development\\unrealed\\sharedpch.unrealed.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgeblueprintformatter\\definitions.crimeforgeblueprintformatter.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgegraphhandler.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattercache.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformattercache.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\formatters\\graphformattertypes.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattersettings.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformattersettings.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattertypes.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\sgraphpin.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\sgraphnode.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\snodepanel.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\engine\\public\\diffresults.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\marqueeoperation.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\slate\\public\\widgets\\layout\\swrapbox.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgenodesizechangedata.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\graphhandler\\formatrequest.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformatterglobals.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\misc\\crimeforgegraphschema.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgegraphschema.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformatterutils.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformatterutils.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\widgets\\crimeforgegraphoverlay.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\sgraphpanel.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\connectiondrawingpolicy.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\grapheditorsettings.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\unrealed\\public\\edgraphnode_comment.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\unrealed\\uht\\edgraphnode_comment.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\grapheditor\\uht\\grapheditorsettings.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\editor\\grapheditor\\public\\graphsplineoverlapresult.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\engine\\public\\grapheditaction.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

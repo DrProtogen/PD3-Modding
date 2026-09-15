@@ -9110,3 +9110,5 @@ Binaries/Win64/EOSSDK-Win64-Shipping.dll
 !/Mods/**/*.uasset
 !/Plugins/**/*.uasset
 !/Plugins/**/*.png
+
+!/Plugins/CrimeForge/*

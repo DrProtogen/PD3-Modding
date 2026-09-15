@@ -1,0 +1,30 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgeblueprintformatter\\module.crimeforgeblueprintformatter.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\intermediate\\build\\win64\\x64\\payday3editor\\development\\unrealed\\sharedpch.unrealed.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgeblueprintformatter\\definitions.crimeforgeblueprintformatter.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeblueprintformatter.init.gen.cpp",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformattercache.gen.cpp",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattercache.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformattercache.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformattersettings.gen.cpp",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattersettings.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformattersettings.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformatterutils.gen.cpp",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformatterutils.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformattertypes.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\crimeforgeformatterglobals.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgeformatterutils.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgegraphschema.gen.cpp",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgeblueprintformatter\\public\\misc\\crimeforgegraphschema.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgeblueprintformatter\\uht\\crimeforgegraphschema.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgeblueprintformatter\\permoduleinline.gen.cpp",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\core\\public\\hal\\permoduleinline.inl"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

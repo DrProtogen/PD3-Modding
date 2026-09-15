@@ -1,0 +1,34 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\private\\serializers\\serializercontainer.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\intermediate\\build\\win64\\x64\\payday3editor\\development\\unrealed\\sharedpch.unrealed.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgejsonimporter\\definitions.crimeforgejsonimporter.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\serializercontainer.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\propertyserializer.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\objectserializer.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\containers\\export.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\containers\\jsonvalueexport.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\engine\\compatibility.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\core\\public\\misc\\engineversioncomparison.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\engine\\classes\\engine\\texturecube.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\texturecube.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\engine\\classes\\engine\\volumetexture.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\volumetexture.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\engine\\classes\\engine\\texture2darray.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\texture2darray.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\developer\\animationdatacontroller\\public\\animdatacontroller.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\engine\\classes\\animation\\animdata\\animdatamodel.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\animdatamodel.generated.h",
+            "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\animationdatacontroller\\uht\\animdatacontroller.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\containers\\exportcontainer.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgejsonimporter\\uht\\objectserializer.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\structs\\structserializer.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgejsonimporter\\uht\\propertyserializer.generated.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}
