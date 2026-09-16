@@ -127,7 +127,6 @@ internal static class Backend
                 new VersionContainer(profile.Version, ETexturePlatform.DesktopMobile));
 
             provider.ReadScriptData = true;
-            provider.ReadShaderMaps = true;
             provider.ReadNaniteData = true;
             provider.Initialize();
 

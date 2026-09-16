@@ -657,7 +657,7 @@ namespace CrimeForge.Automation
 		}
 
 		// --------------------------------------------------------------------
-		// PASS 2: normal project chunk cook.
+		// PASS 2: exact project chunk cook.
 		//
 		// There is intentionally NO DLCName here. The point of this second pass
 		// is to allow the Asset Manager / PAL to build a chunk that can contain
@@ -821,7 +821,7 @@ namespace CrimeForge.Automation
 			{
 				throw new AutomationException(
 					"PAL packaging manifest for '{0}' has no external "
-					+ "packages to force into PASS 2.",
+					+ "replacement packages for PASS 2.",
 					pluginName
 				);
 			}
@@ -839,17 +839,19 @@ namespace CrimeForge.Automation
 			return result;
 		}
 
-		private static string BuildExplicitExternalCookOptions(
+		private static string BuildExactPass2CookOptions(
 			CrimeForgePALPackagingManifest manifest)
 		{
 			if (manifest == null ||
-			    manifest.ExternalCookPackages.Count == 0)
+			    manifest.ExpectedChunkPackages.Count == 0)
 			{
 				return "";
 			}
 
+			var exactPackages = new List<string>();
+
 			foreach (string packageName in
-				manifest.ExternalCookPackages)
+				manifest.ExpectedChunkPackages)
 			{
 				if (string.IsNullOrWhiteSpace(packageName) ||
 				    !packageName.StartsWith(
@@ -857,23 +859,49 @@ namespace CrimeForge.Automation
 					    StringComparison.Ordinal))
 				{
 					throw new AutomationException(
-						"Invalid external cook package in PAL manifest: '{0}'",
+						"Invalid expected PASS 2 package in PAL manifest: '{0}'",
 						packageName ?? ""
+					);
+				}
+
+				if (!exactPackages.Contains(
+						packageName,
+						StringComparer.OrdinalIgnoreCase))
+				{
+					exactPackages.Add(packageName);
+				}
+			}
+
+			foreach (string externalPackage in
+				manifest.ExternalCookPackages)
+			{
+				if (!exactPackages.Contains(
+						externalPackage,
+						StringComparer.OrdinalIgnoreCase))
+				{
+					throw new AutomationException(
+						"External PASS 2 package '{0}' is missing from ExpectedChunkPackages. "
+						+ "Refusing to run an ambiguous cook.",
+						externalPackage
 					);
 				}
 			}
 
 			/*
-			 * CookCommandlet's -Map argument is also a package seed list; it is
-			 * not restricted to UWorld/map assets. We intentionally do NOT use
-			 * -cooksinglepackage here, because PASS 2 still needs the project's
-			 * normal Asset Manager/chunk processing. This simply guarantees that
-			 * the external replacement packages are in the cook graph.
+			 * PASS 2 is a surgical replacement cook. The PAL manifest already
+			 * contains the complete package set that is allowed into the chunk.
+			 *
+			 * -cooksinglepackagenorefs tells CookCommandlet to save only packages
+			 * supplied explicitly on the command line. Referenced vanilla PAYDAY 3
+			 * packages remain imports instead of becoming unsolicited cook targets.
+			 *
+			 * CookCommandlet accepts package names through -Map even when they are
+			 * not UWorld assets, so seed the full deterministic PAL package set.
 			 */
-			return " -Map=" +
+			return " -cooksinglepackagenorefs -Map=" +
 				string.Join(
 					"+",
-					manifest.ExternalCookPackages);
+					exactPackages);
 		}
 
 		private static string NormalizeManifestLine(
@@ -1172,18 +1200,11 @@ namespace CrimeForge.Automation
 			}
 
 			/*
-			 * IMPORTANT:
-			 *
-			 * The explicit -Map cook seed causes Unreal to cook the replacement
-			 * package's dependency graph. Asset Manager can then propagate those
-			 * dependencies into the same chunk as the replacement.
-			 *
-			 * That is useful to make sure the replacement package itself exists,
-			 * but it is NOT what an asset-replacement mod wants. PAYDAY 3 already
-			 * owns those referenced /Game packages in its base containers.
-			 *
-			 * Therefore Chunk <id> must be rebuilt from the PAL's exact package
-			 * list, not from everything Unreal decided to assign transitively.
+			 * PASS 2 now uses -cooksinglepackagenorefs with the PAL's complete
+			 * deterministic package list, so dependency packages should never be
+			 * cooked in the first place. Keep this exact-manifest rebuild anyway as
+			 * a second safety boundary: even if a future cooker/chunking change adds
+			 * an unsolicited entry, it cannot leak into the final replacement chunk.
 			 */
 			var exactSelectedLines =
 				new List<string>();
@@ -1266,14 +1287,8 @@ namespace CrimeForge.Automation
 				Path.GetDirectoryName(selectedManifest));
 
 			/*
-			 * Replace, do not append.
-			 *
-			 * This is the key difference from the previous implementation:
-			 * pakchunk333.txt now contains ONLY packages explicitly represented
-			 * by the PAL inspector's "PAL-managed chunk candidates".
-			 *
-			 * Referenced base-game assets may still be cooked temporarily by
-			 * Unreal, but they are excluded from the mod's final IoStore chunk.
+			 * Replace, do not append. pakchunk<id>.txt must contain ONLY packages
+			 * explicitly represented by the PAL inspector's managed candidates.
 			 */
 			File.WriteAllLines(
 				selectedManifest,
@@ -1365,17 +1380,17 @@ namespace CrimeForge.Automation
 			string additionalCookerOptions =
 				"-AllowUncookedAssetReferences "
 				+ "-ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning"
-				+ BuildExplicitExternalCookOptions(palManifest);
+				+ BuildExactPass2CookOptions(palManifest);
 
 			LogInformation(
-				"PASS 2: explicitly forcing {0} external PAL package(s) into the cook graph.",
-				palManifest.ExternalCookPackages.Count
+				"PASS 2: exact-package cook enabled. {0} package(s) may be cooked; references outside this set remain uncooked imports.",
+				palManifest.ExpectedChunkPackages.Count
 			);
 
-			foreach (string packageName in palManifest.ExternalCookPackages)
+			foreach (string packageName in palManifest.ExpectedChunkPackages)
 			{
 				LogInformation(
-					"PASS 2 force-cook: {0}",
+					"PASS 2 exact package: {0}",
 					packageName
 				);
 			}
@@ -2932,8 +2947,8 @@ namespace CrimeForge.Automation
 					);
 
 				LogInformation(
-					"PASS 2 deterministic PAL input: {0} expected Chunk {1} package(s), "
-					+ "{2} external package(s) explicitly forced into cook.",
+					"PASS 2 deterministic PAL input: {0} exact Chunk {1} package(s), "
+					+ "including {2} external replacement package(s).",
 					palManifest.ExpectedChunkPackages.Count,
 					chunkId,
 					palManifest.ExternalCookPackages.Count

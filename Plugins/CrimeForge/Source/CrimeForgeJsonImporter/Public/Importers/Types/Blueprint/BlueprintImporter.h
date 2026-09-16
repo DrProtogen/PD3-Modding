@@ -7,6 +7,10 @@
 class IBlueprintImporter final : public IImporter {
 protected:
 	UBlueprint* Blueprint = nullptr;
+
+	/* Replacement imports keep the proven reconstruction order. This flag is only used to avoid
+	 * immediately reopening the Blueprint through the auto-formatter after an in-place replace. */
+	bool bReplacingExistingBlueprint = false;
 	
 public:
 	virtual UObject* CreateAsset(UObject* CreatedAsset = nullptr) override;

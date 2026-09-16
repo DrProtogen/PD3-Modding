@@ -26,6 +26,10 @@ struct FRRuntime {
 
 	bool bEnableToolbarToggling = false;
 
+	/* Controls whether a direct import may fetch assets referenced by the selected package.
+	 * This is intentionally runtime-only: the Import window owns the choice for each import run. */
+	bool bImportReferencesRecursively = true;
+
 	/* Helper Functions ~~~~~~~~~~~ */
 	bool IsOlderUE4Target() const;
 	bool IsUE5() const;

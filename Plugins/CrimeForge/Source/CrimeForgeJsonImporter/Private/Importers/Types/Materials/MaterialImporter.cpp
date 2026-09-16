@@ -1,8 +1,6 @@
 
-
 #include "Importers/Types/Materials/MaterialImporter.h"
 #include "Importers/Types/Materials/MaterialStubs.h"
-#include "Utilities/JsonHelpers.h"
 
 /* Include Material.h (depends on UE Version) */
 #if (ENGINE_UE5 && ENGINE_MINOR_VERSION < 3) || ENGINE_UE4
@@ -35,192 +33,170 @@ UObject* IMaterialImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(Material);
 }
 
-namespace {
-	bool HasEditableRootData(const TSharedPtr<FJsonObject>& Props) {
-		if (!Props.IsValid()) {
-			return false;
-		}
-
-		/* UE5 moves these inputs into UMaterialEditorOnlyData. A normal shipping cook does not
-		 * need them, so their presence is the signal that this package really has enough source
-		 * graph data to restore connections instead of merely having runtime material properties. */
-		static const TCHAR* RootFields[] = {
-			TEXT("BaseColor"), TEXT("Metallic"), TEXT("Specular"), TEXT("Roughness"),
-			TEXT("Anisotropy"), TEXT("EmissiveColor"), TEXT("Opacity"), TEXT("OpacityMask"),
-			TEXT("Normal"), TEXT("Tangent"), TEXT("WorldPositionOffset"), TEXT("SubsurfaceColor"),
-			TEXT("AmbientOcclusion"), TEXT("Refraction"), TEXT("PixelDepthOffset"),
-			TEXT("ShadingModelFromMaterialExpression"), TEXT("MaterialAttributes"),
-			TEXT("CustomizedUVs"), TEXT("ExpressionCollection")
-		};
-
-		for (const TCHAR* Field : RootFields) {
-			if (Props->HasField(Field)) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-}
-
 bool IMaterialImporter::Import() {
 	UMaterial* Material = Create<UMaterial>();
-	if (Material == nullptr) {
-		return false;
-	}
 
-	/* Clear any default expressions the factory adds. Either the recoverable source graph or the
-	 * cooked fallback graph below owns the collection from this point on. */
+	/* Clear any default expressions the engine adds */
 #if UE5_1_BEYOND
 	Material->GetExpressionCollection().Empty();
 #else
 	Material->Expressions.Empty();
 #endif
 
-	/* Runtime material state survives cooking and must be applied before building a fallback graph:
-	 * domain, blend mode, bUseMaterialAttributes and shading model determine which material output
-	 * is legal to feed. Do not deserialize the old cached-expression blob into the new material;
-	 * it describes the cooked graph, while UpdateCachedExpressionData later rebuilds a cache for
-	 * the editable graph CrimeForge creates. */
-	GetObjectSerializer()->DeserializeObjectProperties(RemovePropertiesShared(GetAssetData(), {
-		"CachedExpressionData",
-		"CachedReferencedTextures"
-	}), Material);
+	/* Define material data from the JSON */
+	FUObjectExportContainer* ExpressionContainer = new FUObjectExportContainer();
+	TSharedPtr<FJsonObject> Props = FindMaterialData(GetAssetType(), ExpressionContainer);
 
-	const TSharedPtr<FJsonObject>* ShadingModelsPtr = nullptr;
-	if (GetAssetData()->TryGetObjectField(TEXT("ShadingModels"), ShadingModelsPtr) && ShadingModelsPtr != nullptr && ShadingModelsPtr->IsValid()) {
-		int32 ShadingModelField = 0;
-		if ((*ShadingModelsPtr)->TryGetNumberField(TEXT("ShadingModelField"), ShadingModelField)) {
-#if UE5_1_BEYOND
-			Material->GetShadingModels().SetShadingModelField(ShadingModelField);
-#endif
+	/* Map out each expression for easier access */
+	ConstructExpressions(ExpressionContainer);
+
+	const UCrimeForgeSettings* Settings = GetSettings();
+	
+	/* If Missing Material Data */
+	if (ExpressionContainer->Num() == 0) {
+#if ENGINE_UE5
+		if (GetSettings()->bCreateMaterialStubs) {
+			CreateStubs(this);
+			CreatedStubsNotification();
 		}
+		else {
+#endif
+			SpawnMaterialDataMissingNotification();
+#if ENGINE_UE5
+			return false;
+		}
+#endif
 	}
 
-	FUObjectExportContainer* ExpressionContainer = new FUObjectExportContainer();
-	const TSharedPtr<FJsonObject> Props = FindMaterialData(GetAssetType(), ExpressionContainer);
-	const bool bRestoreSourceGraph = Props.IsValid() && ExpressionContainer->Num() > 0 && HasEditableRootData(Props);
+	/* Iterate through all the expressions, and set properties */
+	PropagateExpressions(ExpressionContainer);
 
 #if UE5_1_BEYOND
 	UMaterialEditorOnlyData* EditorOnlyData = Material->GetEditorOnlyData();
 #else
 	UMaterial* EditorOnlyData = Material;
 #endif
+	
+	TArray<FString> IgnoredProperties = TArray<FString> {
+		"ParameterGroupData",
+		"ExpressionCollection",
+		"CustomizedUVs"
+	};
 
-	if (bRestoreSourceGraph) {
-		/* This path is used when source/editor graph data genuinely survived, for example an
-		 * uncooked/editor package or an optional editor-data companion. It remains the highest
-		 * fidelity route, but is not required for a shipping PAYDAY 3 material. */
-		ConstructExpressions(ExpressionContainer);
-		PropagateExpressions(ExpressionContainer);
-
-		const TArray<FString> IgnoredProperties = {
-			TEXT("ParameterGroupData"),
-			TEXT("ExpressionCollection"),
-			TEXT("CustomizedUVs")
-		};
-
-		TSharedPtr<FJsonObject> RawConnectionData = MakeShared<FJsonObject>();
-		RawConnectionData->Values = Props->Values;
-		for (const FString& Property : IgnoredProperties) {
+	const TSharedPtr<FJsonObject> RawConnectionData = TSharedPtr<FJsonObject>(Props);
+	for (FString Property : IgnoredProperties) {
+		if (RawConnectionData->HasField(Property)) {
 			RawConnectionData->RemoveField(Property);
 		}
-
-		GetObjectSerializer()->DeserializeObjectProperties(RawConnectionData, EditorOnlyData);
-
-		const TArray<TSharedPtr<FJsonValue>>* InputsPtr = nullptr;
-		if (Props->TryGetArrayField(TEXT("CustomizedUVs"), InputsPtr) && InputsPtr != nullptr) {
-			int32 InputIndex = 0;
-			for (const TSharedPtr<FJsonValue>& InputValue : *InputsPtr) {
-				if (InputIndex >= UE_ARRAY_COUNT(EditorOnlyData->CustomizedUVs)) {
-					break;
-				}
-
-				const TSharedPtr<FJsonObject> InputObject = InputValue.IsValid() && InputValue->Type == EJson::Object ? InputValue->AsObject() : nullptr;
-				if (InputObject.IsValid()) {
-					const FName ExpressionName = GetExpressionName(InputObject.Get());
-					if (ExpressionContainer->Contains(ExpressionName)) {
-						FExpressionInput Input = PopulateExpressionInput(InputObject.Get(), ExpressionContainer->Find<UMaterialExpression>(ExpressionName));
-						RemapConvertOutput(Input);
-						EditorOnlyData->CustomizedUVs[InputIndex] = *reinterpret_cast<FVector2MaterialInput*>(&Input);
-					}
-				}
-				++InputIndex;
-			}
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* ParameterGroups = nullptr;
-		if (Props->TryGetArrayField(TEXT("ParameterGroupData"), ParameterGroups) && ParameterGroups != nullptr) {
-			TArray<FParameterGroupData> GroupData;
-			for (const TSharedPtr<FJsonValue>& GroupValue : *ParameterGroups) {
-				if (!GroupValue.IsValid() || GroupValue->IsNull()) {
-					continue;
-				}
-
-				if (GroupValue->Type != EJson::Object) {
-					continue;
-				}
-
-				const TSharedPtr<FJsonObject> GroupObject = GroupValue->AsObject();
-				if (!GroupObject.IsValid()) {
-					continue;
-				}
-
-				FParameterGroupData Group;
-				FString GroupName;
-				if (GroupObject->TryGetStringField(TEXT("GroupName"), GroupName)) {
-					Group.GroupName = GroupName;
-				}
-				int32 SortPriority = 0;
-				if (GroupObject->TryGetNumberField(TEXT("GroupSortPriority"), SortPriority)) {
-					Group.GroupSortPriority = SortPriority;
-				}
-				GroupData.Add(Group);
-			}
-			EditorOnlyData->ParameterGroupData = GroupData;
-		}
-
-		UE_LOG(LogCrimeForgeJsonImporter, Display, TEXT("Material %s restored source graph with %d expression export(s)"), *GetAssetName(), ExpressionContainer->Num());
 	}
-	else {
-#if ENGINE_UE5
-		/* Normal shipping path. The original authoring graph is gone, but CachedExpressionData still
-		 * exposes runtime parameter identities/defaults. Build one deterministic live chain from the
-		 * recoverable parameters so MICs can bind to a real parent material. */
-		const bool bCreatedFallback = CreateStubs(this);
-		if (bCreatedFallback) {
-			CreatedStubsNotification();
-		} else {
-			UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Material %s imported from cooked data, but no recoverable cached parameters were found"), *GetAssetName());
+	
+	/* Connect all pins using deserializer */
+	GetObjectSerializer()->DeserializeObjectProperties(RawConnectionData, EditorOnlyData);
+
+	/* CustomizedUVs defined here */
+	const TArray<TSharedPtr<FJsonValue>>* InputsPtr;
+	
+	if (Props->TryGetArrayField(TEXT("CustomizedUVs"), InputsPtr)) {
+		int i = 0;
+		for (const auto& InputValue : *InputsPtr) {
+			FJsonObject* InputObject = InputValue->AsObject().Get();
+			FName InputExpressionName = GetExpressionName(InputObject);
+
+			if (ExpressionContainer->Contains(InputExpressionName)) {
+				FExpressionInput Input = PopulateExpressionInput(InputObject, ExpressionContainer->Find<UMaterialExpression>(InputExpressionName));
+				RemapConvertOutput(Input);
+
+				EditorOnlyData->CustomizedUVs[i] = *reinterpret_cast<FVector2MaterialInput*>(&Input);
+			}
+			i++;
 		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* StringParameterGroupData;
+	if (Props->TryGetArrayField(TEXT("ParameterGroupData"), StringParameterGroupData)) {
+		TArray<FParameterGroupData> ParameterGroupData;
+
+		for (const auto& ParameterGroupDataObject : *StringParameterGroupData) {
+			if (ParameterGroupDataObject->IsNull()) continue;
+			FParameterGroupData GroupData;
+
+			FString GroupName;
+			if (ParameterGroupDataObject->AsObject()->TryGetStringField(TEXT("GroupName"), GroupName)) GroupData.GroupName = GroupName;
+			int GroupSortPriority;
+			if (ParameterGroupDataObject->AsObject()->TryGetNumberField(TEXT("GroupSortPriority"), GroupSortPriority)) GroupData.GroupSortPriority = GroupSortPriority;
+
+			ParameterGroupData.Add(GroupData);
+		}
+
+		EditorOnlyData->ParameterGroupData = ParameterGroupData;
+	}
+
+	/* Handle edit changes, and add it to the content browser */
+	if (!OnAssetCreation(Material)) return false;
+
+	const TSharedPtr<FJsonObject>* ShadingModelsPtr;
+	
+	if (GetAssetData()->TryGetObjectField(TEXT("ShadingModels"), ShadingModelsPtr)) {
+		int ShadingModelField;
+		
+		if (ShadingModelsPtr->Get()->TryGetNumberField(TEXT("ShadingModelField"), ShadingModelField)) {
+#if UE5_1_BEYOND
+			Material->GetShadingModels().SetShadingModelField(ShadingModelField);
 #else
-		SpawnMaterialDataMissingNotification();
-		return false;
+			/* Not to sure what to do in UE4, no function exists to override it. */
 #endif
+		}
 	}
 
-	/* Move the result node next to whichever reconstructed input CrimeForge fed. */
-	UMaterialExpression* PositionalExpression = EditorOnlyData->BaseColor.Expression;
-	if (Material->bUseMaterialAttributes && EditorOnlyData->MaterialAttributes.Expression != nullptr) {
-		PositionalExpression = EditorOnlyData->MaterialAttributes.Expression;
+	/* Deserialize any properties */
+	GetObjectSerializer()->DeserializeObjectProperties(GetAssetData(), Material);
+
+#if ENGINE_UE5
+	/* Update Cached Expression Data */
+	if (AssetExport->GetJsonObject().Has("CachedExpressionData")) {
+		FUObjectJsonValueExport CachedExpressionData = AssetExport->GetJsonObject().GetObject("CachedExpressionData");
+
+		UMaterialAccessor* Accessor = Cast<UMaterialAccessor>(Material);
+		FMaterialCachedExpressionData* CachedData = Accessor->GetCachedExpressionDataRef();
+
+		/*GetPropertySerializer()->DeserializeStruct(FMaterialCachedExpressionData::StaticStruct(), CachedExpressionData.JsonObject.ToSharedRef(), CachedData);*/
 	}
-	if (PositionalExpression == nullptr) {
+#endif
+	
+	/* Move Material Result Node ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+	UMaterialExpression* PositionalExpression = EditorOnlyData->BaseColor.Expression;
+	if (UMaterialExpression* MaterialAttributes = EditorOnlyData->MaterialAttributes.Expression) {
+		if (Material->bUseMaterialAttributes) {
+			PositionalExpression = MaterialAttributes;
+		}
+	}
+
+	if (!PositionalExpression) {
 		PositionalExpression = EditorOnlyData->EmissiveColor.Expression;
 	}
-	if (PositionalExpression != nullptr) {
-		Material->EditorX = PositionalExpression->MaterialExpressionEditorX + PositionalExpression->GetWidth() * 2.5f;
+
+	if (PositionalExpression) {
+		Material->EditorX = PositionalExpression->MaterialExpressionEditorX + PositionalExpression->GetWidth() * 2.5;
 		Material->EditorY = PositionalExpression->MaterialExpressionEditorY;
 	}
+	/* Move Material Result Node ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
+	/* Cached expression data arrived in 4.25; before that ForceRecompileForRendering below is
+	 * what walks the expressions the importer just built */
 #if !UE4_24_BELOW
 	Material->UpdateCachedExpressionData();
 #endif
 
 	FMaterialUpdateContext MaterialUpdateContext;
 	MaterialUpdateContext.AddMaterial(Material);
+	
 	Material->ForceRecompileForRendering();
 
-	/* Register, PostEditChange and save only after the graph and runtime properties are complete. */
-	return OnAssetCreation(Material);
-}
+	Material->PostEditChange();
+	Material->MarkPackageDirty();
+	Material->PreEditChange(nullptr);
 
+	Save();
+
+	return true;
+}

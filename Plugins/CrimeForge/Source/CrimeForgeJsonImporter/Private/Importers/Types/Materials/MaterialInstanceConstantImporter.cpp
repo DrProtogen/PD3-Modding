@@ -1,114 +1,23 @@
 
-
 #include "Importers/Types/Materials/MaterialInstanceConstantImporter.h"
-#include "Importers/Types/Materials/MaterialParameterCompatibility.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Dom/JsonObject.h"
 #include "RHIDefinitions.h"
 #include "MaterialShared.h"
-#include "Materials/MaterialInterface.h"
 #include "Utilities/JsonHelpers.h"
-
-namespace {
-	bool UsesCrimeForgeCookedFallback(UMaterialInterface* Parent) {
-		if (Parent == nullptr) {
-			return false;
-		}
-
-		TArray<FMaterialParameterInfo> ParameterInfos;
-		TArray<FGuid> ParameterIds;
-		Parent->GetAllScalarParameterInfo(ParameterInfos, ParameterIds);
-		for (const FMaterialParameterInfo& ParameterInfo : ParameterInfos) {
-			if (ParameterInfo.Name == CrimeForgeMaterialCompatibility::GetFallbackMarkerName()) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	int32 RemapAssociatedParameterInfos(TArray<FUObjectJsonValueExport>& Parameters) {
-		int32 RemappedCount = 0;
-		for (FUObjectJsonValueExport& Parameter : Parameters) {
-			if (!Parameter.Has(TEXT("ParameterInfo"))) {
-				continue;
-			}
-
-			FUObjectJsonValueExport ParameterInfo = Parameter.GetObject(TEXT("ParameterInfo"));
-			if (CrimeForgeMaterialCompatibility::RemapParameterInfoForFallback(ParameterInfo.JsonObject)) {
-				++RemappedCount;
-			}
-		}
-		return RemappedCount;
-	}
-
-	/* A material instance is only useful if its inheritance chain exists first. The generic
-	 * property serializer can import object references while it is deserializing them, but by
-	 * then the MIC already exists and half of its state may already have been applied. Resolve the
-	 * Parent reference before creating this asset instead. Parent MICs recurse through this same
-	 * importer, so an entire instance chain is rebuilt from the base material outward. */
-	bool ResolveParentBeforeInstance(IMaterialInstanceConstantImporter* Importer, TObjectPtr<UMaterialInterface>& OutParent) {
-		OutParent = nullptr;
-
-		const TSharedPtr<FJsonObject> AssetData = Importer->GetAssetData();
-		if (!AssetData.IsValid()) {
-			return false;
-		}
-
-		const TSharedPtr<FJsonValue>* ParentValue = AssetData->Values.Find(TEXT("Parent"));
-		if (ParentValue == nullptr || !ParentValue->IsValid() || (*ParentValue)->IsNull()) {
-			return true;
-		}
-
-		if ((*ParentValue)->Type != EJson::Object) {
-			UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Material instance %s has a Parent value CrimeForge cannot resolve"), *Importer->GetAssetName());
-			return false;
-		}
-
-		TSharedPtr<FJsonObject> ParentReference = (*ParentValue)->AsObject();
-		if (!ParentReference.IsValid()) {
-			return false;
-		}
-
-		Importer->LoadExport<UMaterialInterface>(&ParentReference, OutParent);
-		if (OutParent == nullptr) {
-			FString ParentPath;
-			ParentReference->TryGetStringField(TEXT("ObjectPath"), ParentPath);
-			UE_LOG(LogCrimeForgeJsonImporter, Error, TEXT("Material instance %s could not import parent %s"), *Importer->GetAssetName(), *ParentPath);
-			return false;
-		}
-
-		UE_LOG(LogCrimeForgeJsonImporter, Display, TEXT("Material instance %s parent ready: %s"), *Importer->GetAssetName(), *OutParent->GetPathName());
-		return true;
-	}
-}
 
 UObject* IMaterialInstanceConstantImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(NewObject<UMaterialInstanceConstant>(GetPackage(), UMaterialInstanceConstant::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
 }
 
 bool IMaterialInstanceConstantImporter::Import() {
-	TObjectPtr<UMaterialInterface> ResolvedParent = nullptr;
-	if (!ResolveParentBeforeInstance(this, ResolvedParent)) {
-		return false;
-	}
-	const bool bParentUsesCookedFallback = UsesCrimeForgeCookedFallback(ResolvedParent);
-	int32 RemappedAssociatedParameterCount = 0;
-
 	UMaterialInstanceConstant* MaterialInstanceConstant = Create<UMaterialInstanceConstant>();
-	if (MaterialInstanceConstant == nullptr) {
-		return false;
-	}
 
 	/* Specific fix for 4.16 engines */
 	const TArray<FString> ParameterFields = {
 		TEXT("ScalarParameterValues"),
 		TEXT("TextureParameterValues"),
-		TEXT("VectorParameterValues"),
-		TEXT("DoubleVectorParameterValues"),
-		TEXT("TextureCollectionParameterValues"),
-		TEXT("FontParameterValues"),
-		TEXT("RuntimeVirtualTextureParameterValues"),
-		TEXT("SparseVolumeTextureParameterValues")
+		TEXT("VectorParameterValues")
 	};
 
 	for (const FString& FieldName : ParameterFields) {
@@ -116,9 +25,6 @@ bool IMaterialInstanceConstantImporter::Import() {
 			TArray<FUObjectJsonValueExport> Params = GetAssetDataAsValue().GetArray(FieldName);
 			
 			ConvertParameterNamesToInfos(Params);
-			if (bParentUsesCookedFallback) {
-				RemappedAssociatedParameterCount += RemapAssociatedParameterInfos(Params);
-			}
 			GetAssetDataAsValue().SetArray(FieldName, Params);
 		}
 	}
@@ -144,14 +50,6 @@ bool IMaterialInstanceConstantImporter::Import() {
 	}
 	if (GetAssetDataAsValue().Has(TEXT("StaticParameters"))) {
 		ReadStaticParameters(GetAssetDataAsValue().GetObject("StaticParameters"), StaticSwitchParametersObjects, StaticComponentMaskParametersObjects);
-	}
-
-	if (bParentUsesCookedFallback) {
-		RemappedAssociatedParameterCount += RemapAssociatedParameterInfos(StaticSwitchParametersObjects);
-		RemappedAssociatedParameterCount += RemapAssociatedParameterInfos(StaticComponentMaskParametersObjects);
-		if (RemappedAssociatedParameterCount > 0) {
-			UE_LOG(LogCrimeForgeJsonImporter, Display, TEXT("Material instance %s remapped %d layer/blend parameter override(s) to cooked-parent compatibility identities"), *GetAssetName(), RemappedAssociatedParameterCount);
-		}
 	}
 
 	/* ~~~~~~~~~ STATIC PARAMETERS ~~~~~~~~~~~ */
@@ -264,8 +162,6 @@ void IMaterialInstanceConstantImporter::ConvertParameterNamesToInfos(TArray<FUOb
 			TSharedPtr<FJsonObject> ParameterInfo = MakeShared<FJsonObject>();
 			
 			ParameterInfo->SetStringField(TEXT("Name"), Parameter.GetString("ParameterName"));
-			ParameterInfo->SetStringField(TEXT("Association"), TEXT("EMaterialParameterAssociation::GlobalParameter"));
-			ParameterInfo->SetNumberField(TEXT("Index"), INDEX_NONE);
 			Parameter.SetObject("ParameterInfo", ParameterInfo);
 
 			/* Cleanup */

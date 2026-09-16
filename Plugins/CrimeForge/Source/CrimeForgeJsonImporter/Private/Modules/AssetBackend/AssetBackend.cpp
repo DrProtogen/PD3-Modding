@@ -1,12 +1,14 @@
 
 
 #include "Modules/AssetBackend/AssetBackend.h"
+#include "CrimeForgeSettings.h"
 
 #include "Async/Async.h"
 #include "Editor.h"
 #include "Engine/EngineUtilities.h"
 #include "Modules/AssetReader/AssetReader.h"
 #include "Settings/Runtime.h"
+#include "Importers/Cache/ImportDependencyCache.h"
 #include "TimerManager.h"
 
 namespace {
@@ -183,6 +185,11 @@ void AssetBackend::Export::GetAsync(
     const TMap<FString, FString>& Headers,
     TFunction<void(TSharedPtr<FJsonObject>)> OnResponse)
 {
+    if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+        OnResponse(nullptr);
+        return;
+    }
+
     Parameters.Add(TEXT("path"), Path);
     Parameters.Add(TEXT("raw"), Raw ? TEXT("true") : TEXT("false"));
     AssetBackend::Get(ExportURL, Parameters, Headers, MoveTemp(OnResponse));
@@ -218,9 +225,23 @@ TSharedPtr<FJsonObject> AssetBackend::Export::GetBlocking(
     TMap<FString, FString> Parameters,
     const TMap<FString, FString>& Headers)
 {
+    if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+        return nullptr;
+    }
+
+    /* Plain raw exports are immutable for the lifetime of one editor session, so reuse them.
+     * Requests with parameters such as save=true are actions and are never cached. */
+    const bool bCacheable = Raw && Parameters.Num() == 0 && Headers.Num() == 0;
+    if (bCacheable) {
+        TSharedPtr<FJsonObject> Cached;
+        if (FCrimeForgeImportDependencyCache::TryGetRawResponse(Path, Cached)) return Cached;
+    }
+
     Parameters.Add(TEXT("path"), Path);
     Parameters.Add(TEXT("raw"), Raw ? TEXT("true") : TEXT("false"));
-    return AssetBackend::GetBlocking(ExportURL, Parameters, Headers);
+    TSharedPtr<FJsonObject> Response = AssetBackend::GetBlocking(ExportURL, Parameters, Headers);
+    if (bCacheable && Response.IsValid()) FCrimeForgeImportDependencyCache::StoreRawResponse(Path, Response);
+    return Response;
 }
 
 TSharedPtr<FJsonObject> AssetBackend::Export::GetRawBlocking(
@@ -232,6 +253,11 @@ TSharedPtr<FJsonObject> AssetBackend::Export::GetRawBlocking(
 }
 
 bool AssetBackend::Export::GetBinaryBlocking(const FString& Path, const FString& ContentType, TArray<uint8>& OutData) {
+    if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+        OutData.Reset();
+        return false;
+    }
+
     const TSharedRef<FJsonObject> Request = BuildEmbeddedRequest(
         ExportURL,
         { { TEXT("path"), Path }, { TEXT("raw"), TEXT("false") } },
@@ -244,20 +270,48 @@ bool AssetBackend::Export::GetBinaryBlocking(const FString& Path, const FString&
     return OutData.Num() > 0;
 }
 
-TArray<FString> AssetBackend::Folder::GetPathsBlocking(const FString& Path) {
-    TArray<FString> Paths;
+TArray<FCrimeForgeFolderAssetEntry> AssetBackend::Folder::GetAssetsBlocking(const FString& Path) {
+    TArray<FCrimeForgeFolderAssetEntry> Assets;
+
+    if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) return Assets;
 
     const TSharedPtr<FJsonObject> Response = AssetBackend::GetBlocking(FolderPathsURL, { { TEXT("path"), Path } });
-    if (!Response.IsValid()) return Paths;
+    if (!Response.IsValid()) return Assets;
 
-    const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
-    if (!Response->TryGetArrayField(TEXT("paths"), Values) || !Values) return Paths;
+    /* New AssetReader builds return a typed assets array. Keep the old paths-only response as a fallback so the
+     * editor UI still works while an older managed runtime is being rebuilt automatically. */
+    const TArray<TSharedPtr<FJsonValue>>* AssetValues = nullptr;
+    if (Response->TryGetArrayField(TEXT("assets"), AssetValues) && AssetValues) {
+        for (const TSharedPtr<FJsonValue>& Value : *AssetValues) {
+            if (!Value.IsValid() || Value->Type != EJson::Object) continue;
+            const TSharedPtr<FJsonObject> Object = Value->AsObject();
+            if (!Object.IsValid()) continue;
 
-    for (const TSharedPtr<FJsonValue>& Value : *Values) {
-        FString AssetPath;
-        if (Value.IsValid() && Value->TryGetString(AssetPath) && !AssetPath.IsEmpty()) Paths.Add(AssetPath);
+            FCrimeForgeFolderAssetEntry Entry;
+            Object->TryGetStringField(TEXT("path"), Entry.Path);
+            Object->TryGetStringField(TEXT("type"), Entry.Type);
+            if (!Entry.Path.IsEmpty()) Assets.Add(MoveTemp(Entry));
+        }
+        if (Assets.Num() > 0) return Assets;
     }
 
+    const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+    if (!Response->TryGetArrayField(TEXT("paths"), Values) || !Values) return Assets;
+    for (const TSharedPtr<FJsonValue>& Value : *Values) {
+        FString AssetPath;
+        if (Value.IsValid() && Value->TryGetString(AssetPath) && !AssetPath.IsEmpty()) {
+            FCrimeForgeFolderAssetEntry& Entry = Assets.AddDefaulted_GetRef();
+            Entry.Path = MoveTemp(AssetPath);
+        }
+    }
+    return Assets;
+}
+
+TArray<FString> AssetBackend::Folder::GetPathsBlocking(const FString& Path) {
+    TArray<FString> Paths;
+    for (const FCrimeForgeFolderAssetEntry& Entry : GetAssetsBlocking(Path)) {
+        if (!Entry.Path.IsEmpty()) Paths.Add(Entry.Path);
+    }
     return Paths;
 }
 

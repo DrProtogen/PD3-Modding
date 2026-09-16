@@ -18,6 +18,7 @@
 #include "Importers/Constructor/Asset.h"
 #include "Engine/Package.h"
 #include "Utilities/AssetPaths.h"
+#include "Settings/Runtime.h"
 
 /* Base handler for converting JSON to assets */
 class CRIMEFORGEJSONIMPORTER_API IImporter : public USerializerContainer {
@@ -71,6 +72,22 @@ public:
 template <class T>
 TObjectPtr<T> IImporter::DownloadWrapper(TObjectPtr<T> InObject, FString Type, const FString Name, const FString Path) {
     const UCrimeForgeSettings* Settings = GetSettings();
+
+    /* A direct Import From Path run can be root-only. At this point the importer has already
+     * tried the project and the current package, so reaching DownloadWrapper means this is an
+     * external dependency that would require another backend import. Leave the reference alone
+     * instead of recursively constructing that package. */
+    if (!GCrimeForgeJsonImporterRuntime.bImportReferencesRecursively) {
+        UE_LOG(
+            LogCrimeForgeJsonImporter,
+            Verbose,
+            TEXT("Non-recursive import: skipped referenced asset '%s.%s' (type '%s')"),
+            *Path,
+            *Name,
+            *Type
+        );
+        return InObject;
+    }
 
     if ((
         InObject == nullptr ||

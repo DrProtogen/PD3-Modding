@@ -7,6 +7,7 @@
         "Includes": [
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgejsonimporter\\definitions.crimeforgejsonimporter.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\toolbar\\tools\\importfrompath.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importconflict.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\tools\\toolbase.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\serializercontainer.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\propertyserializer.h",
@@ -29,6 +30,8 @@
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgejsonimporter\\uht\\objectserializer.generated.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\structs\\structserializer.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforgejsonimporter\\uht\\propertyserializer.generated.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforge\\public\\crimeforgesettings.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforge\\uht\\crimeforgesettings.generated.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importreader.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importer.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\macros.h",
@@ -112,8 +115,6 @@
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\projects\\public\\interfaces\\ipluginmanager.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\engine\\properties.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\settings\\settingsaccess.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforge\\public\\crimeforgesettings.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforge\\uht\\crimeforgesettings.generated.h",
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\developer\\settings\\public\\isettingsmodule.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\metadata.h",
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\core\\public\\windows\\windowshwrapper.h",
@@ -225,12 +226,13 @@
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\asset.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\utilities\\assetpaths.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\settings\\runtime.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importconflict.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\types\\texture\\textureimporter.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\types\\texture\\texturetypes.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\assetbackend\\assetbackend.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\assetreader\\assetreader.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\ui\\import\\simportpathsdialog.h"
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\ui\\import\\simportpathsdialog.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\diagnostics\\importdiagnostics.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\cache\\importdependencycache.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

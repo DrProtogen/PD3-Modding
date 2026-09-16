@@ -7,6 +7,8 @@
         "Includes": [
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgejsonimporter\\definitions.crimeforgejsonimporter.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importjob.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforge\\public\\crimeforgesettings.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforge\\uht\\crimeforgesettings.generated.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importreader.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importer.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\engine\\compatibility.h",
@@ -111,8 +113,6 @@
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\projects\\public\\interfaces\\ipluginmanager.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\engine\\properties.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\settings\\settingsaccess.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforge\\public\\crimeforgesettings.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforge\\uht\\crimeforgesettings.generated.h",
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\developer\\settings\\public\\isettingsmodule.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\metadata.h",
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\core\\public\\windows\\windowshwrapper.h",

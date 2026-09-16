@@ -227,6 +227,9 @@
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\types\\texture\\textureformats.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\types\\texture\\texturetypes.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\constructor\\importconflict.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\transaction\\importtransaction.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\diff\\importdiff.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\diagnostics\\importdiagnostics.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\assetbackend\\assetbackend.h"
         ],
         "ImportedModules": [],

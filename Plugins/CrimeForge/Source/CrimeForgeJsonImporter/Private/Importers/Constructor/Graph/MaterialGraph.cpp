@@ -1,5 +1,4 @@
 
-
 #include "Importers/Constructor/Graph/MaterialGraph.h"
 
 /* Expressions */
@@ -29,60 +28,29 @@
 #endif
 
 TSharedPtr<FJsonObject> IMaterialGraph::FindMaterialData(const FString& Type, FUObjectExportContainer* Container) {
-	TSharedPtr<FJsonObject> MainAssetData;
 	TSharedPtr<FJsonObject> EditorOnlyData;
 
-	/* Some uncooked/cooked-editor packages may expose UMaterialEditorOnlyData separately from
-	 * UMaterial. Normal shipping cooks commonly strip it. Prefer explicit editor data when it is
-	 * genuinely present, but always retain the cooked UMaterial/UMaterialFunction export so the
-	 * importer can fall back to runtime parameter reconstruction.
-	 *
-	 * Do not treat every other export as a graph node. A material package can contain helper
-	 * objects that are not UMaterialExpression instances; feeding those through the expression
-	 * constructor is both incorrect and can produce bogus subobjects in the material asset. */
 	for (FUObjectExport* Export : GetContainer()->Exports) {
-		if (Export == nullptr || !Export->IsJsonValid()) {
-			continue;
-		}
+		FString ExportType = Export->GetType().ToString();
 
-		const FString ExportType = Export->GetType().ToString();
-
-		if (ExportType == Type + TEXT("EditorOnlyData")) {
+		/* If an editor only data object is found, just set it */
+		if (ExportType == Type + "EditorOnlyData") {
 			EditorOnlyData = Export->JsonObject;
 			continue;
 		}
 
+		/* For older versions, the "editor" data is in the main UMaterial/UMaterialFunction export */
 		if (ExportType == Type) {
-			if (!MainAssetData.IsValid()) {
-				MainAssetData = Export->JsonObject;
-			}
+			EditorOnlyData = Export->JsonObject;
 			continue;
 		}
 
-		if (!ExportType.StartsWith(TEXT("MaterialExpression"))) {
-			continue;
-		}
-
+		/* Add to the list of expressions */
 		Export->Parent = AssetExport->Object;
 		Container->Exports.Add(Export);
 	}
 
-	const TSharedPtr<FJsonObject> GraphData = EditorOnlyData.IsValid() ? EditorOnlyData : MainAssetData;
-	if (!GraphData.IsValid()) {
-		UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("No material data export was found for %s"), *GetAssetName());
-		return nullptr;
-	}
-
-	const TSharedPtr<FJsonObject>* Properties = nullptr;
-	if (!GraphData->TryGetObjectField(TEXT("Properties"), Properties) || Properties == nullptr || !Properties->IsValid()) {
-		UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Material data for %s has no Properties object"), *GetAssetName());
-		return nullptr;
-	}
-
-	UE_LOG(LogCrimeForgeJsonImporter, Display, TEXT("Material data %s: %d expression export(s), editable root data: %s"),
-		*GetAssetName(), Container->Num(), EditorOnlyData.IsValid() ? TEXT("yes") : TEXT("cooked fallback"));
-
-	return *Properties;
+	return EditorOnlyData->GetObjectField(TEXT("Properties"));
 }
 
 void IMaterialGraph::ConstructExpressions(FUObjectExportContainer* Container) {
@@ -150,9 +118,7 @@ void IMaterialGraph::PropagateExpressions(FUObjectExportContainer* Container) {
 			const FName SubGraphExpressionName = GetExportNameOfSubobject(SubGraphExpressionObject->GetStringField(TEXT("ObjectName")));
 			const FUObjectExport* SubGraphExport = Container->Find(SubGraphExpressionName);
 
-			if (SubGraphExport != nullptr && SubGraphExport->IsJsonValid()) {
-				Expression->SubgraphExpression = SubGraphExport->Get<UMaterialExpression>();
-			}
+			Expression->SubgraphExpression = SubGraphExport->Get<UMaterialExpression>();
 #endif
 		}
 
@@ -1033,30 +999,16 @@ FExpressionInput IMaterialGraph::PopulateExpressionInput(const FJsonObject* Json
 }
 
 FName IMaterialGraph::GetExpressionName(const FJsonObject* JsonProperties, const FString& OverrideParameterName) {
-	if (JsonProperties == nullptr) {
-		return NAME_None;
-	}
-
 	const TSharedPtr<FJsonValue> ExpressionField = JsonProperties->TryGetField(OverrideParameterName);
 
 	if (ExpressionField == nullptr || ExpressionField->IsNull()) {
-		/* Older material input serialization stores the target by expression name rather than as
-		 * an object reference. Missing names are valid for an unconnected input, so do not use the
-		 * asserting GetStringField path here. */
-		FString ExpressionName;
-		if (JsonProperties->TryGetStringField(TEXT("ExpressionName"), ExpressionName)) {
-			return StringToName(ExpressionName);
-		}
-
-		return NAME_None;
+		/* Must be from < 4.25 */
+		return StringToName(JsonProperties->GetStringField(TEXT("ExpressionName")));
 	}
 
 	const TSharedPtr<FJsonObject> ExpressionObject = ExpressionField->AsObject();
-	if (!ExpressionObject.IsValid()) {
-		return NAME_None;
-	}
-
 	FString ObjectName;
+	
 	if (ExpressionObject->TryGetStringField(TEXT("ObjectName"), ObjectName)) {
 		return GetExportNameOfSubobject(ObjectName);
 	}

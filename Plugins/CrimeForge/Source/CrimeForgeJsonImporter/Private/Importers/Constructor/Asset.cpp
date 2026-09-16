@@ -275,7 +275,51 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 			return true;
 		}
 
-		const TSharedPtr<FJsonObject> JsonObject = Response->GetArrayField(TEXT("exports"))[0]->AsObject();
+		/* The asset backend can legitimately return a response with no exports when a referenced
+		 * game asset cannot be resolved. Do not index element 0 until the response has been
+		 * validated; doing so used to assert in TArray when an empty exports array was returned. */
+		const TArray<TSharedPtr<FJsonValue>>* Exports = nullptr;
+		if (!Response->TryGetArrayField(TEXT("exports"), Exports) || Exports == nullptr || Exports->IsEmpty()) {
+			UE_LOG(
+				LogCrimeForgeJsonImporter,
+				Warning,
+				TEXT("Asset backend returned no exports for '%s' (type '%s'). Leaving the reference unresolved."),
+				*Path,
+				*Type
+			);
+
+			bSuccess = false;
+			return true;
+		}
+
+		const TSharedPtr<FJsonValue>& FirstExport = (*Exports)[0];
+		if (!FirstExport.IsValid() || FirstExport->Type != EJson::Object) {
+			UE_LOG(
+				LogCrimeForgeJsonImporter,
+				Warning,
+				TEXT("Asset backend returned an invalid first export for '%s' (type '%s'). Leaving the reference unresolved."),
+				*Path,
+				*Type
+			);
+
+			bSuccess = false;
+			return true;
+		}
+
+		const TSharedPtr<FJsonObject> JsonObject = FirstExport->AsObject();
+		if (!JsonObject.IsValid()) {
+			UE_LOG(
+				LogCrimeForgeJsonImporter,
+				Warning,
+				TEXT("Asset backend returned a null first export object for '%s' (type '%s'). Leaving the reference unresolved."),
+				*Path,
+				*Type
+			);
+
+			bSuccess = false;
+			return true;
+		}
+
 		FString PackagePath;
 		FString AssetName;
 		RealPath.Split(".", &PackagePath, &AssetName);
@@ -293,7 +337,7 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 			}
 
 			IImporter* OutImporter;
-			bSuccess = IImportReader::ReadExportsAndImport(Response->GetArrayField(TEXT("exports")), PackagePath, OutImporter, true);
+			bSuccess = IImportReader::ReadExportsAndImport(*Exports, PackagePath, OutImporter, true);
 
 			/* Define found object */
 			FString RedirectedPath = RealPath;

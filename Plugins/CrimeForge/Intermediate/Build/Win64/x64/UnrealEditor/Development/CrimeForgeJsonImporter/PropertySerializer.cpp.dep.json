@@ -278,7 +278,8 @@
             "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\distributionvectoruniformcurve.generated.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\structs\\datetimeserializer.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\structs\\fallbackstructserializer.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\structs\\timespanserializer.h"
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\serializers\\structs\\timespanserializer.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\diagnostics\\importdiagnostics.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

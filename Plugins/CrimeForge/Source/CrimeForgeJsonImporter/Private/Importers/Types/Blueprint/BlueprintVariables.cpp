@@ -1,6 +1,7 @@
 
 
 #include "Importers/Types/Blueprint/BlueprintVariables.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
 
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
@@ -279,7 +280,9 @@ int32 FBlueprintVariables::Construct(UBlueprint* Blueprint, const TArray<TShared
 			FString Type;
 			Property->TryGetStringField(TEXT("Type"), Type);
 
-			UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("\"%s\" has no blueprint pin type for variable \"%s\" of type %s"), *Blueprint->GetName(), *Name, *Type);
+			const FString Detail = FString::Printf(TEXT("%s.%s has no usable Blueprint pin type for exported type %s"), *Blueprint->GetName(), *Name, *Type);
+			UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("%s"), *Detail);
+			FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Blueprint variable type"), Detail);
 
 			Unsupported++;
 

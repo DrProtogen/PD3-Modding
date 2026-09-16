@@ -31,32 +31,39 @@ public partial class AssetReaderController
         var folder = ToGameFolderPath(path, MainProfile.Provider);
         if (folder is null) return NotFoundResponse;
 
-        var paths = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        /* Keep the lightweight package type beside each path. CrimeForge's queue needs this before an import starts,
+         * otherwise every newly listed asset is forced into the Unresolved/Unknown bucket until its full JSON export
+         * has already been imported. The value is only the root asset class name, not any asset payload. */
+        var assetsByPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        CollectFolderPaths(MainProfile.Provider, folder, paths, seen);
+        CollectFolderAssets(MainProfile.Provider, folder, assetsByPath);
 
         /* A folder can be split across profiles, the same way a single path can be */
         foreach (var profile in SecondaryBaseProfiles)
         {
             if (!profile.IsInitialized) continue;
 
-            CollectFolderPaths(profile.Provider, ToGameFolderPath(path, profile.Provider) ?? folder, paths, seen);
+            CollectFolderAssets(profile.Provider, ToGameFolderPath(path, profile.Provider) ?? folder, assetsByPath);
         }
 
-        if (paths.Count == 0) return NotFoundResponse;
+        if (assetsByPath.Count == 0) return NotFoundResponse;
 
-        paths.Sort(StringComparer.OrdinalIgnoreCase);
+        var ordered = assetsByPath
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         return new JsonResult(new
         {
             path = folder,
-            paths
+            /* Retain the old paths array for callers that only need package names. */
+            paths = ordered.Select(pair => pair.Key).ToArray(),
+            assets = ordered.Select(pair => new { path = pair.Key, type = pair.Value }).ToArray()
         });
     }
 
-    /* Everything mounted below Folder, subfolders included */
-    private static void CollectFolderPaths(BaseProvider provider, string folder, List<string> paths, HashSet<string> seen)
+    /* Everything mounted below Folder, subfolders included. The type is resolved from the package's root export.
+     * Blueprint packages are special-cased toward their generated class because that is the export CrimeForge imports. */
+    private static void CollectFolderAssets(BaseProvider provider, string folder, Dictionary<string, string> assetsByPath)
     {
         var prefix = folder + "/";
 
@@ -70,8 +77,36 @@ public partial class AssetReaderController
             if (packagePath.EndsWith(".o", StringComparison.OrdinalIgnoreCase)) continue;
             if (!packagePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
 
-            /* One package is several mounted files, so the path is what gets deduplicated */
-            if (seen.Add(packagePath)) paths.Add(packagePath);
+            /* One package is several mounted files. A secondary profile may supply a type if the first copy did not. */
+            if (assetsByPath.TryGetValue(packagePath, out var existingType) && !string.IsNullOrWhiteSpace(existingType))
+                continue;
+
+            var assetType = string.Empty;
+            try
+            {
+                if (provider.TryLoadPackage(file, out var package))
+                {
+                    var exports = package.GetExports().ToArray();
+                    var slash = packagePath.LastIndexOf('/');
+                    var leafName = slash >= 0 ? packagePath[(slash + 1)..] : packagePath;
+
+                    var primary = exports.FirstOrDefault(export =>
+                                      export.Name.Equals(leafName + "_C", StringComparison.OrdinalIgnoreCase) &&
+                                      export.ExportType.Contains("GeneratedClass", StringComparison.OrdinalIgnoreCase))
+                                  ?? exports.FirstOrDefault(export => export.Name.Equals(leafName, StringComparison.OrdinalIgnoreCase))
+                                  ?? exports.FirstOrDefault(export => export.ExportType.Contains("GeneratedClass", StringComparison.OrdinalIgnoreCase))
+                                  ?? exports.FirstOrDefault();
+
+                    assetType = primary?.ExportType ?? string.Empty;
+                }
+            }
+            catch
+            {
+                /* Folder listing must remain useful even when one unusual package cannot be deserialized. The queue will
+                 * keep that one entry unresolved and the normal importer can report the detailed error if it is selected. */
+            }
+
+            assetsByPath[packagePath] = assetType;
         }
     }
 

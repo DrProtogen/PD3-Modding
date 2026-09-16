@@ -17,7 +17,7 @@ void EmptyLinkFunctionForGeneratedCodeCrimeForge_init() {}
 				nullptr,
 				0,
 				PKG_CompiledIn | 0x00000040,
-				0x1D9B694F,
+				0x0AEA6AA5,
 				0xFABF4889,
 				METADATA_PARAMS(0, nullptr)
 			};
@@ -25,5 +25,5 @@ void EmptyLinkFunctionForGeneratedCodeCrimeForge_init() {}
 		}
 		return Z_Registration_Info_UPackage__Script_CrimeForge.OuterSingleton;
 	}
-	static FRegisterCompiledInInfo Z_CompiledInDeferPackage_UPackage__Script_CrimeForge(Z_Construct_UPackage__Script_CrimeForge, TEXT("/Script/CrimeForge"), Z_Registration_Info_UPackage__Script_CrimeForge, CONSTRUCT_RELOAD_VERSION_INFO(FPackageReloadVersionInfo, 0x1D9B694F, 0xFABF4889));
+	static FRegisterCompiledInInfo Z_CompiledInDeferPackage_UPackage__Script_CrimeForge(Z_Construct_UPackage__Script_CrimeForge, TEXT("/Script/CrimeForge"), Z_Registration_Info_UPackage__Script_CrimeForge, CONSTRUCT_RELOAD_VERSION_INFO(FPackageReloadVersionInfo, 0x0AEA6AA5, 0xFABF4889));
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

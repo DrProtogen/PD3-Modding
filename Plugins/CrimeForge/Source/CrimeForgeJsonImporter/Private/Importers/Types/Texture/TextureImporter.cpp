@@ -6,6 +6,10 @@
 #include "Importers/Types/Texture/TextureTypes.h"
 #include "Importers/Constructor/Asset.h"
 #include "Importers/Constructor/ImportConflict.h"
+#include "Importers/Transaction/ImportTransaction.h"
+#include "Importers/Diff/ImportDiff.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
+#include "Containers/ExportContainer.h"
 
 #include "Engine/TextureLightProfile.h"
 #include "Engine/EngineUtilities.h"
@@ -95,7 +99,17 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 	}
 
 	const FString ObjectPath = Package->GetName() + TEXT(".") + AssetName;
-	if (!FImportConflict::ShouldImportAsset(ObjectPath, Type)) {
+	TArray<TSharedPtr<FJsonValue>> DiffValues;
+	DiffValues.Add(MakeShared<FJsonValueObject>(Export));
+	FUObjectExportContainer DiffContainer(DiffValues);
+	FUObjectExport* DiffExport = DiffContainer.Exports.Num() > 0 ? DiffContainer.Exports[0] : nullptr;
+	if (!FImportConflict::ShouldImportAsset(ObjectPath, Type, DiffExport, &DiffContainer, PackagePath)) {
+		return false;
+	}
+	FCrimeForgeImportTransaction ReplacementTransaction(ObjectPath, FImportConflict::IsReplacementApproved(ObjectPath));
+	if (!ReplacementTransaction.IsReady()) {
+		const FString Reason = ReplacementTransaction.GetFailureReason().IsEmpty() ? TEXT("Could not create replacement backup") : ReplacementTransaction.GetFailureReason();
+		FCrimeForgeImportDiagnostics::FinishAsset(PackagePath, ECrimeForgeImportStatus::Failed, TEXT("Replacement aborted before texture mutation: ") + Reason);
 		return false;
 	}
 
@@ -105,11 +119,14 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 
 	UTexture* Texture = nullptr;
 	if (!TextureCreator.Create(Type, Export, Data, Texture) || Texture == nullptr) {
+		ReplacementTransaction.Rollback(TEXT("texture creation failed"));
+		FCrimeForgeImportDiagnostics::FinishAsset(PackagePath, ECrimeForgeImportStatus::Failed, TEXT("Texture creation failed"));
 		return false;
 	}
 
 	FAssetRegistryModule::AssetCreated(Texture);
 	if (!Texture->MarkPackageDirty()) {
+		ReplacementTransaction.Rollback(TEXT("texture package could not be marked dirty"));
 		return false;
 	}
 
@@ -121,9 +138,11 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 	/* Textures don't go through HandleAssetCreation, so the jump to the asset has to happen here */
 	BrowseToAsset(Texture);
 
+	FCrimeForgeImportDiff::StoreProvenance(Texture, FCrimeForgeImportDiff::ComputeSourceHash(&DiffContainer), Type);
 	if (Settings->bSaveImportedAssets) {
 		SavePackage(Package);
 	}
+	ReplacementTransaction.Commit();
 
 	OutTexture = Texture;
 

@@ -1,6 +1,7 @@
 
 
 #include "Importers/Types/Blueprint/Graph/BlueprintGraphReconstructor.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
 
 #include "Containers/ExportContainer.h"
 #include "Engine/Log.h"
@@ -1439,8 +1440,9 @@ namespace {
 					return true;
 				}
 
-				UE_LOG(LogCrimeForgeJsonImporter, Display, TEXT("Event graph reconstruction: %s skipped unsupported statement token %s"),
-					*Wrapper->GetName().ToString(), *Token);
+				const FString Detail = FString::Printf(TEXT("%s skipped unsupported statement token %s"), *Wrapper->GetName().ToString(), *Token);
+				UE_LOG(LogCrimeForgeJsonImporter, Display, TEXT("Event graph reconstruction: %s"), *Detail);
+				FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Blueprint event statement"), Detail, Token);
 				++ArrayIndex;
 			}
 			return true;

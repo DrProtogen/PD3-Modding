@@ -1,0 +1,23 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "SBZModLoader",
+	"Description": "A base for game modding",
+	"Category": "Other",
+	"CreatedBy": "Starbreeze Entertainment",
+	"CreatedByURL": "https://starbreeze.com",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"EngineVersion": "5.5.0",
+	"CanContainContent": true,
+	"Installed": true,
+	"Modules": [
+		{
+			"Name": "SBZModLoader",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

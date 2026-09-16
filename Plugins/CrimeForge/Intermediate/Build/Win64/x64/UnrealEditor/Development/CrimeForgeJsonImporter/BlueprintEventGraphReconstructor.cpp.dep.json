@@ -7,6 +7,7 @@
         "Includes": [
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforgejsonimporter\\definitions.crimeforgejsonimporter.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\types\\blueprint\\graph\\blueprintgraphreconstructor.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\diagnostics\\importdiagnostics.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\containers\\exportcontainer.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\containers\\export.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\containers\\jsonvalueexport.h",

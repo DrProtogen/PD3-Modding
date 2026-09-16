@@ -1,6 +1,7 @@
 
 
 #include "Importers/Types/Blueprint/Graph/BlueprintGraphReconstructor.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
 
 #include "Containers/ExportContainer.h"
 #include "Engine/EngineUtilities.h"
@@ -283,8 +284,9 @@ namespace {
 
 			FEdGraphPinType PinType;
 			if (!FBlueprintVariables::GetPinType(Property, PinType)) {
-				UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Graph reconstruction: unsupported signature pin %s.%s"),
-					*FunctionExport->GetName().ToString(), *Name);
+				const FString Detail = FString::Printf(TEXT("Unsupported signature pin %s.%s"), *FunctionExport->GetName().ToString(), *Name);
+				UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Graph reconstruction: %s"), *Detail);
+				FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Blueprint signature pin"), Detail);
 				continue;
 			}
 
@@ -740,10 +742,10 @@ namespace {
 						Expression->TryGetStringField(TEXT("Function"), FunctionName);
 					}
 				}
-				UE_LOG(LogCrimeForgeJsonImporter, Warning,
-					TEXT("Graph reconstruction: function '%s' could not be resolved (target class=%s) while rebuilding %s"),
-					*FunctionName, ExplicitScopeClass ? *ExplicitScopeClass->GetName() : (GetClassFromPin(TargetObject) ? *GetClassFromPin(TargetObject)->GetName() : TEXT("<null>")),
-					*FunctionExport->GetName().ToString());
+				const FString TargetClassName = ExplicitScopeClass ? ExplicitScopeClass->GetName() : (GetClassFromPin(TargetObject) ? GetClassFromPin(TargetObject)->GetName() : TEXT("<null>"));
+				const FString Detail = FString::Printf(TEXT("Function '%s' could not be resolved (target class=%s) while rebuilding %s"), *FunctionName, *TargetClassName, *FunctionExport->GetName().ToString());
+				UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Graph reconstruction: %s"), *Detail);
+				FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Blueprint function call"), Detail);
 				return nullptr;
 			}
 
@@ -1137,8 +1139,9 @@ namespace {
 				return Schema->TryCreateConnection(Source, TargetPin);
 			}
 
-			UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Graph reconstruction: unsupported expression token %s in %s"),
-				*Token, *FunctionExport->GetName().ToString());
+			const FString Detail = FString::Printf(TEXT("Unsupported expression token %s in %s"), *Token, *FunctionExport->GetName().ToString());
+			UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Graph reconstruction: %s"), *Detail);
+			FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Blueprint expression token"), Detail, Token);
 			return false;
 		}
 

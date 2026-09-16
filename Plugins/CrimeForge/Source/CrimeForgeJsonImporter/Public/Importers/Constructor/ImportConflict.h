@@ -1,33 +1,46 @@
-
-
 #pragma once
 
 #include "CoreMinimal.h"
 
+struct FUObjectExport;
+struct FUObjectExportContainer;
+
+enum class ECrimeForgeImportMode : uint8 {
+	Reference,
+	Update,
+	ForceRebuild
+};
+
 /*
  * One conflict policy is shared by a complete user-started import operation. Nested dependency
- * imports join the same policy, which is important for Replace All: choosing it once must apply to
- * the folder/path/JSON import that started the work rather than being forgotten by the next
- * dependency.
+ * imports join the same policy, which is important for Replace All and the import mode.
  */
 class CRIMEFORGEJSONIMPORTER_API FImportConflict {
 public:
-	static void BeginBatch();
+	static void BeginBatch(ECrimeForgeImportMode Mode = ECrimeForgeImportMode::Update);
 	static void EndBatch();
 
 	static bool IsCancelled();
 	static void CancelBatch();
+	static ECrimeForgeImportMode GetMode();
 
-	/* Returns false only when the user cancelled the current import. If ObjectPath does not already
-	 * exist, or this path has already been approved/started during this batch, no dialog is shown. */
-	static bool ShouldImportAsset(const FString& ObjectPath, const FString& Type);
+	/* Returns false when this asset should not be rebuilt. In Update mode an asset whose stored
+	 * CrimeForge source fingerprint matches the incoming data is automatically left alone. */
+	static bool ShouldImportAsset(
+		const FString& ObjectPath,
+		const FString& Type,
+		FUObjectExport* IncomingExport = nullptr,
+		FUObjectExportContainer* Container = nullptr,
+		const FString& SourcePath = FString());
+
+	static bool IsReplacementApproved(const FString& ObjectPath);
+	static bool WasSkipped(const FString& ObjectPath);
+	static bool WasUpToDate(const FString& ObjectPath);
 };
 
-/* Nestable scope for synchronous import entry points. The across-frame import job owns one of
- * these for its full lifetime instead. */
 class CRIMEFORGEJSONIMPORTER_API FScopedImportConflictBatch {
 public:
-	FScopedImportConflictBatch() { FImportConflict::BeginBatch(); }
+	explicit FScopedImportConflictBatch(ECrimeForgeImportMode Mode = ECrimeForgeImportMode::Update) { FImportConflict::BeginBatch(Mode); }
 	~FScopedImportConflictBatch() { FImportConflict::EndBatch(); }
 
 	FScopedImportConflictBatch(const FScopedImportConflictBatch&) = delete;

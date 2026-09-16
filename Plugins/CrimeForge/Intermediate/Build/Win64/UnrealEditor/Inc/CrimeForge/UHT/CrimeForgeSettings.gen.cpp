@@ -440,6 +440,14 @@ struct Z_Construct_UClass_UCrimeForgeSettings_Statics
 		{ "DisplayName", "Launch Game After Packing" },
 		{ "ModuleRelativePath", "Public/CrimeForgeSettings.h" },
 	};
+	static constexpr UECodeGen_Private::FMetaDataPairParam NewProp_bEnableExperimentalFeatures_MetaData[] = {
+		{ "Category", "Experimental" },
+		{ "DisplayName", "Enable Experimental Features" },
+		{ "ModuleRelativePath", "Public/CrimeForgeSettings.h" },
+#if !UE_BUILD_SHIPPING
+		{ "ToolTip", "Enables experimental PAYDAY 3 asset reading/importing features and shows the JSON Import toolbar button. Disabled by default." },
+#endif
+	};
 	static constexpr UECodeGen_Private::FMetaDataPairParam NewProp_MappingsFile_MetaData[] = {
 		{ "Category", "JSON Importer|PAYDAY 3 Data" },
 		{ "DisplayName", "Mappings File" },
@@ -517,6 +525,8 @@ struct Z_Construct_UClass_UCrimeForgeSettings_Statics
 	static const UECodeGen_Private::FBoolPropertyParams NewProp_bCopyModsToGame;
 	static const UECodeGen_Private::FBytePropertyParams NewProp_LaunchGameAfterPacking_Underlying;
 	static const UECodeGen_Private::FEnumPropertyParams NewProp_LaunchGameAfterPacking;
+	static void NewProp_bEnableExperimentalFeatures_SetBit(void* Obj);
+	static const UECodeGen_Private::FBoolPropertyParams NewProp_bEnableExperimentalFeatures;
 	static const UECodeGen_Private::FStructPropertyParams NewProp_MappingsFile;
 	static const UECodeGen_Private::FStrPropertyParams NewProp_AESKey;
 	static void NewProp_bSaveImportedAssets_SetBit(void* Obj);
@@ -555,6 +565,11 @@ void Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bCopyModsToGame_Set
 const UECodeGen_Private::FBoolPropertyParams Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bCopyModsToGame = { "bCopyModsToGame", nullptr, (EPropertyFlags)0x0010000000004001, UECodeGen_Private::EPropertyGenFlags::Bool | UECodeGen_Private::EPropertyGenFlags::NativeBool, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, sizeof(bool), sizeof(UCrimeForgeSettings), &Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bCopyModsToGame_SetBit, METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_bCopyModsToGame_MetaData), NewProp_bCopyModsToGame_MetaData) };
 const UECodeGen_Private::FBytePropertyParams Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_LaunchGameAfterPacking_Underlying = { "UnderlyingType", nullptr, (EPropertyFlags)0x0000000000000000, UECodeGen_Private::EPropertyGenFlags::Byte, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, 0, nullptr, METADATA_PARAMS(0, nullptr) };
 const UECodeGen_Private::FEnumPropertyParams Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_LaunchGameAfterPacking = { "LaunchGameAfterPacking", nullptr, (EPropertyFlags)0x0010000000004001, UECodeGen_Private::EPropertyGenFlags::Enum, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UCrimeForgeSettings, LaunchGameAfterPacking), Z_Construct_UEnum_CrimeForge_ECrimeForgeStartGameType, METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_LaunchGameAfterPacking_MetaData), NewProp_LaunchGameAfterPacking_MetaData) }; // 2914092134
+void Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bEnableExperimentalFeatures_SetBit(void* Obj)
+{
+	((UCrimeForgeSettings*)Obj)->bEnableExperimentalFeatures = 1;
+}
+const UECodeGen_Private::FBoolPropertyParams Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bEnableExperimentalFeatures = { "bEnableExperimentalFeatures", nullptr, (EPropertyFlags)0x0010000000004001, UECodeGen_Private::EPropertyGenFlags::Bool | UECodeGen_Private::EPropertyGenFlags::NativeBool, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, sizeof(bool), sizeof(UCrimeForgeSettings), &Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bEnableExperimentalFeatures_SetBit, METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_bEnableExperimentalFeatures_MetaData), NewProp_bEnableExperimentalFeatures_MetaData) };
 const UECodeGen_Private::FStructPropertyParams Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_MappingsFile = { "MappingsFile", nullptr, (EPropertyFlags)0x0010000000004001, UECodeGen_Private::EPropertyGenFlags::Struct, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UCrimeForgeSettings, MappingsFile), Z_Construct_UScriptStruct_FFilePath, METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_MappingsFile_MetaData), NewProp_MappingsFile_MetaData) };
 const UECodeGen_Private::FStrPropertyParams Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_AESKey = { "AESKey", nullptr, (EPropertyFlags)0x0010000000004001, UECodeGen_Private::EPropertyGenFlags::Str, RF_Public|RF_Transient|RF_MarkAsNative, nullptr, nullptr, 1, STRUCT_OFFSET(UCrimeForgeSettings, AESKey), METADATA_PARAMS(UE_ARRAY_COUNT(NewProp_AESKey_MetaData), NewProp_AESKey_MetaData) };
 void Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bSaveImportedAssets_SetBit(void* Obj)
@@ -610,6 +625,7 @@ const UECodeGen_Private::FPropertyParamsBase* const Z_Construct_UClass_UCrimeFor
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bCopyModsToGame,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_LaunchGameAfterPacking_Underlying,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_LaunchGameAfterPacking,
+	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bEnableExperimentalFeatures,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_MappingsFile,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_AESKey,
 	(const UECodeGen_Private::FPropertyParamsBase*)&Z_Construct_UClass_UCrimeForgeSettings_Statics::NewProp_bSaveImportedAssets,
@@ -676,10 +692,10 @@ struct Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Pu
 		{ FRSettings::StaticStruct, Z_Construct_UScriptStruct_FRSettings_Statics::NewStructOps, TEXT("RSettings"), &Z_Registration_Info_UScriptStruct_RSettings, CONSTRUCT_RELOAD_VERSION_INFO(FStructReloadVersionInfo, sizeof(FRSettings), 2987723626U) },
 	};
 	static constexpr FClassRegisterCompiledInInfo ClassInfo[] = {
-		{ Z_Construct_UClass_UCrimeForgeSettings, UCrimeForgeSettings::StaticClass, TEXT("UCrimeForgeSettings"), &Z_Registration_Info_UClass_UCrimeForgeSettings, CONSTRUCT_RELOAD_VERSION_INFO(FClassReloadVersionInfo, sizeof(UCrimeForgeSettings), 2998851674U) },
+		{ Z_Construct_UClass_UCrimeForgeSettings, UCrimeForgeSettings::StaticClass, TEXT("UCrimeForgeSettings"), &Z_Registration_Info_UClass_UCrimeForgeSettings, CONSTRUCT_RELOAD_VERSION_INFO(FClassReloadVersionInfo, sizeof(UCrimeForgeSettings), 425132494U) },
 	};
 };
-static FRegisterCompiledInInfo Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_3382671913(TEXT("/Script/CrimeForge"),
+static FRegisterCompiledInInfo Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_3866043541(TEXT("/Script/CrimeForge"),
 	Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_Statics::ClassInfo, UE_ARRAY_COUNT(Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_Statics::ClassInfo),
 	Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_Statics::ScriptStructInfo, UE_ARRAY_COUNT(Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_Statics::ScriptStructInfo),
 	Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_Statics::EnumInfo, UE_ARRAY_COUNT(Z_CompiledInDeferFile_FID_PAYDAY3_Plugins_CrimeForge_Source_CrimeForge_Public_CrimeForgeSettings_h_Statics::EnumInfo));

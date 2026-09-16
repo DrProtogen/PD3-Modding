@@ -2,13 +2,13 @@
 #include "Net/UnrealNetwork.h"
 #include "SBZToolSkeletalMeshComponent.h"
 
-ASBZTool::ASBZTool(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer.SetDefaultSubobjectClass<USBZToolSkeletalMeshComponent>(TEXT("MeshComponent"))) {
+ASBZTool::ASBZTool(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer.SetDefaultSubobjectClass<USBZToolSkeletalMeshComponent>(TEXT("Mesh"))) {
     this->bReplicates = true;
     const FProperty* p_RemoteRole = GetClass()->FindPropertyByName("RemoteRole");
     (*p_RemoteRole->ContainerPtrToValuePtr<TEnumAsByte<ENetRole>>(this)) = ROLE_SimulatedProxy;
     this->bIsInventory = false;
     this->bReplicateRootAttachment = true;
-    this->SkeletalMesh = (USBZToolSkeletalMeshComponent*)RootComponent;
+    this->SkeletalMesh = CastChecked<USBZToolSkeletalMeshComponent>(Mesh);
     this->Data = NULL;
     this->ToolState = ESBZToolState::Canceled;
     this->InstigatorCharacter = NULL;

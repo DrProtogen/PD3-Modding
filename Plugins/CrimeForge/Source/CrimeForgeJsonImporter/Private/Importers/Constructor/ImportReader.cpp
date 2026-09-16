@@ -1,6 +1,7 @@
 
 
 #include "Importers/Constructor/ImportReader.h"
+#include "CrimeForgeSettings.h"
 
 #include "Importers/Constructor/Importer.h"
 #include "Importers/Constructor/ImportConflict.h"
@@ -13,6 +14,10 @@
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 #include "Modules/AssetBackend/BlockingRequest.h"
+#include "Importers/Cache/ImportDependencyCache.h"
+#include "Importers/Transaction/ImportTransaction.h"
+#include "Importers/Diff/ImportDiff.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
 
 
 namespace {
@@ -81,8 +86,13 @@ void IImportReader::NormalizeBlueprintKismetAliases(const TArray<TSharedPtr<FJso
 }
 
 bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications, bool bUseRelativePath) {
+	if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+		UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Asset import was blocked because CrimeForge Experimental Features are disabled: %s"), *File);
+		return false;
+	}
+
 	/* Nested scopes share the same conflict policy. This also makes direct callers that did not
-	 * explicitly open a batch get one coherent Replace All / Cancel decision for the whole export set. */
+	 * explicitly open a batch get one coherent Replace All / Skip / Cancel decision for the whole export set. */
 	const FScopedImportConflictBatch ConflictScope;
 
 	/* Importers resolve references through the asset backend while they deserialize, and those requests
@@ -100,27 +110,72 @@ bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& E
 
 	const bool IsBlueprint = Container->FindByType(FString("BlueprintGeneratedClass"))->IsJsonValid();
 	
+	bool bAnyReady = false;
+	bool bAttemptedImportableExport = false;
+	FString FirstUnsupportedType;
+
 	for (FUObjectExport* Export : Container->Exports) {
+		if (!Export) continue;
+
+		const FString ExportType = Export->GetType().ToString();
+
 		if (IsBlueprint) {
-			if (Export->GetType() != "BlueprintGeneratedClass") continue;
+			if (ExportType != TEXT("BlueprintGeneratedClass")) continue;
+		}
+		else {
+			/* A normal package commonly contains helper/subobject exports such as BodySetup,
+			 * NavCollision, sockets, etc. They are consumed by the owning asset importer and are
+			 * not standalone assets. Older CrimeForge builds silently skipped them. Do not send
+			 * each helper export through ReadExportAndImport(), because that marks the whole file
+			 * failed even after the real root asset imported successfully. */
+			const UClass* ExportClass = FindClassByType(ExportType);
+			if (!ExportClass || !CanImport(ExportType, false, ExportClass)) {
+				if (FirstUnsupportedType.IsEmpty() && !ExportType.IsEmpty() && !ExportType.Equals(TEXT("None"), ESearchCase::IgnoreCase)) {
+					FirstUnsupportedType = ExportType;
+				}
+				continue;
+			}
 		}
 
-		/* These are subobjects used by the material importer, not standalone Content Browser
-		 * assets. Keep them in the shared container so references resolve, but never send them
-		 * through the top-level importer loop. */
-		const FString ExportType = Export->GetType().ToString();
-		if (ExportType.StartsWith(TEXT("MaterialExpression")) || ExportType.EndsWith(TEXT("EditorOnlyData"))) {
-			continue;
+		bAttemptedImportableExport = true;
+		if (IImporter* Importer = ReadExportAndImport(Container, Export, File, HideNotifications, bUseRelativePath)) {
+			OutImporter = Importer;
+			bAnyReady = true;
 		}
-		
-		if (IImporter* Importer = ReadExportAndImport(Container, Export, File, HideNotifications, bUseRelativePath)) OutImporter = Importer;
+		else {
+			FCrimeForgeImportResult Result;
+			if (FCrimeForgeImportDiagnostics::GetResult(File, Result)) {
+				bAnyReady = Result.Status == ECrimeForgeImportStatus::Imported ||
+					Result.Status == ECrimeForgeImportStatus::ImportedWithWarnings ||
+					Result.Status == ECrimeForgeImportStatus::UpToDate ||
+					Result.Status == ECrimeForgeImportStatus::Skipped;
+			}
+		}
 		if (FImportConflict::IsCancelled()) break;
 	}
 
-	return !FImportConflict::IsCancelled();
+	/* If a package genuinely has no importable root export, still report that once. The important
+	 * distinction is that helper exports no longer overwrite a successful root-asset result. */
+	if (!bAttemptedImportableExport && !FirstUnsupportedType.IsEmpty()) {
+		const FScopedCrimeForgeImportDiagnosticContext DiagnosticContext(File);
+		FCrimeForgeImportDiagnostics::RecordUnsupported(
+			TEXT("Asset type"),
+			FString::Printf(TEXT("CrimeForge has no importer for '%s'"), *FirstUnsupportedType));
+		FCrimeForgeImportDiagnostics::FinishAsset(
+			File,
+			ECrimeForgeImportStatus::Failed,
+			FString::Printf(TEXT("Unsupported asset type: %s"), *FirstUnsupportedType));
+	}
+
+	return !FImportConflict::IsCancelled() && bAnyReady;
 }
 
 IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container, FUObjectExport* Export, FString File, const bool HideNotifications, bool bUseRelativePath) {
+	if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+		return nullptr;
+	}
+
+	const FScopedCrimeForgeImportDiagnosticContext DiagnosticContext(File);
 	const FString Type = Export->GetType().ToString();
 	FString Name = Export->GetName().ToString();
 
@@ -132,12 +187,21 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	}
 
 	const UClass* Class = FindClassByType(Type);
+	FCrimeForgeImportDiagnostics::SetType(File, Type);
 	
-	if (Class == nullptr) return nullptr;
+	if (Class == nullptr) {
+		FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Export type"), FString::Printf(TEXT("Class for export type '%s' could not be resolved"), *Type));
+		FCrimeForgeImportDiagnostics::FinishAsset(File, ECrimeForgeImportStatus::Failed, FString::Printf(TEXT("Unsupported/unresolved export type: %s"), *Type));
+		return nullptr;
+	}
 
 	/* Check if this export can be imported */
 	const bool InheritsDataAsset = Class->IsChildOf(UDataAsset::StaticClass());
-	if (!CanImport(Type, false, Class)) return nullptr;
+	if (!CanImport(Type, false, Class)) {
+		FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Asset type"), FString::Printf(TEXT("CrimeForge has no importer for '%s'"), *Type));
+		FCrimeForgeImportDiagnostics::FinishAsset(File, ECrimeForgeImportStatus::Failed, FString::Printf(TEXT("Unsupported asset type: %s"), *Type));
+		return nullptr;
+	}
 
 	if (bUseRelativePath) {
 		/* Convert from relative path to full path */
@@ -177,6 +241,7 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	}
 
 	if (LocalPackage == nullptr) {
+		FCrimeForgeImportDiagnostics::FinishAsset(File, ECrimeForgeImportStatus::Failed, FailureReason);
 		AppendNotification(
 			FText::FromString("Failed: " + Type),
 			FText::FromString(FailureReason),
@@ -193,7 +258,17 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	/* Existing assets are never overwritten silently. One approval covers this path for the rest
 	 * of the current import so dependency cycles do not ask about the same asset repeatedly. */
 	const FString ObjectPath = LocalPackage->GetName() + TEXT(".") + Name;
-	if (!FImportConflict::ShouldImportAsset(ObjectPath, Type)) {
+	if (!FImportConflict::ShouldImportAsset(ObjectPath, Type, Export, Container, File)) {
+		return nullptr;
+	}
+
+	/* If this path already existed and the conflict policy approved replacement, snapshot the package
+	 * before any importer mutates it. A failed importer automatically restores/reloads this backup. */
+	FCrimeForgeImportTransaction ReplacementTransaction(ObjectPath, FImportConflict::IsReplacementApproved(ObjectPath));
+	if (!ReplacementTransaction.IsReady()) {
+		const FString Reason = ReplacementTransaction.GetFailureReason().IsEmpty() ? TEXT("Could not create replacement backup") : ReplacementTransaction.GetFailureReason();
+		FCrimeForgeImportDiagnostics::FinishAsset(File, ECrimeForgeImportStatus::Failed, TEXT("Replacement aborted before mutation: ") + Reason);
+		UE_LOG(LogCrimeForgeJsonImporter, Error, TEXT("CrimeForge replacement aborted for %s: %s"), *ObjectPath, *Reason);
 		return nullptr;
 	}
 
@@ -224,7 +299,35 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 			Successful = Importer->Import();
 		} catch (const char* Exception) {
 			UE_LOG(LogCrimeForgeJsonImporter, Error, TEXT("Importer exception: %s"), *FString(Exception));
+			FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Importer exception"), FString(Exception));
+		} catch (...) {
+			UE_LOG(LogCrimeForgeJsonImporter, Error, TEXT("Importer threw an unknown exception while importing %s"), *File);
+			FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Importer exception"), TEXT("Unknown native exception"));
 		}
+	}
+
+	if (Successful) {
+		UObject* ImportedAsset = LoadObject<UObject>(nullptr, *ObjectPath);
+		if (!ImportedAsset) {
+			Successful = false;
+			ReplacementTransaction.Rollback(TEXT("importer reported success but the resulting asset could not be loaded"));
+			FCrimeForgeImportDiagnostics::FinishAsset(File, ECrimeForgeImportStatus::Failed, TEXT("Importer reported success, but the resulting asset could not be loaded; original asset restored when a replacement backup was available"));
+		}
+		else {
+			FCrimeForgeImportDiff::StoreProvenance(ImportedAsset, FCrimeForgeImportDiff::ComputeSourceHash(Container), Type);
+			/* Provenance is package metadata, so persist it after the importer has created/saved the asset. */
+			if (LocalPackage) {
+				LocalPackage->MarkPackageDirty();
+				if (GetSettings()->bSaveImportedAssets) SavePackage(LocalPackage);
+			}
+			ReplacementTransaction.Commit();
+			const TArray<FString> Dependencies = FCrimeForgeImportDependencyCache::GetDependencies(File);
+			FCrimeForgeImportDiagnostics::SetDependencyCount(File, Dependencies.Num());
+			FCrimeForgeImportDiagnostics::FinishAsset(File, ECrimeForgeImportStatus::Imported);
+		}
+	} else {
+		ReplacementTransaction.Rollback(TEXT("importer reported failure"));
+		FCrimeForgeImportDiagnostics::FinishAsset(File, ECrimeForgeImportStatus::Failed, TEXT("Importer reported failure; original asset restored when a replacement backup was available"));
 	}
 
 	if (HideNotifications) {
@@ -263,10 +366,15 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		);
 	}
 
-	return Importer;
+	return Successful ? Importer : nullptr;
 }
 
 IImporter* IImportReader::ImportReference(const FString& File) {
+	if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+		UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Asset import was blocked because CrimeForge Experimental Features are disabled: %s"), *File);
+		return nullptr;
+	}
+
 	FString FilePath = File;
 	if (FilePath.Contains("\\")) {
 		FilePath = File.Replace(TEXT("\\"), TEXT("/"));

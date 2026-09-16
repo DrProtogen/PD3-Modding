@@ -214,7 +214,8 @@
             "c:\\program files (x86)\\windows kits\\10\\include\\10.0.22621.0\\um\\ime_cmodes.h",
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\core\\public\\windows\\postwindowsapi.h",
             "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\modules\\assetreader\\assetreader.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\settings\\runtime.h"
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\settings\\runtime.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\cache\\importdependencycache.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

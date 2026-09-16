@@ -570,20 +570,6 @@ public partial class AssetReaderController : ControllerBase
                         continue;
                     }
 
-                    /* If an optional editor companion exists, materials are a special case. Keep
-                     * its UMaterialEditorOnlyData object in the response as well as merging useful
-                     * fields into the cooked UMaterial. Normal shipping packages do not depend on
-                     * this path; CrimeForge falls back to cooked parameter reconstruction when the
-                     * editor data is absent. */
-                    var preserveMaterialEditorData =
-                        export.ExportType.Equals("Material", StringComparison.OrdinalIgnoreCase) &&
-                        editorData.ExportType.EndsWith("EditorOnlyData", StringComparison.OrdinalIgnoreCase);
-
-                    if (preserveMaterialEditorData && !finalExports.Contains(editorData))
-                    {
-                        finalExports.Add(editorData);
-                    }
-
                     if (replaces)
                     {
                         /* Merged over rather than alongside. Both copies naming the same property is
@@ -663,7 +649,6 @@ public partial class AssetReaderController : ControllerBase
             });
         }
     }
-    
 
     private static string AddReflectionKismetTokenAliases(string json)
     {

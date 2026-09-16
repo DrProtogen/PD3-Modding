@@ -18,6 +18,7 @@
 #include "Particles/ParticleSystem.h"
 #include "Particles/TypeData/ParticleModuleTypeDataGpu.h"
 #include "Settings/Runtime.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
 
 /* ReSharper disable once CppDeclaratorNeverUsed */
 DECLARE_LOG_CATEGORY_CLASS(LogCrimeForgeJsonImporterObjectSerializer, All, All);
@@ -43,13 +44,25 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 
 	const UClass* Class = Export->GetClass();
 	if (!Class) {
-		UE_LOG(
-			LogCrimeForgeJsonImporterObjectSerializer,
-			Warning,
+		const FString ExportName = Export->GetName().ToString();
+		const FString ExportType = Export->GetType().ToString();
+		const FString ExportClass = Export->GetString(TEXT("Class"));
+
+		/* CUE4Parse/FModel can emit a sentinel export whose name/type are both None and which has
+		 * no class. It is not an Unreal asset/object CrimeForge needs to reconstruct. Older importer
+		 * builds effectively ignored it; do the same here instead of counting it as unsupported data. */
+		if (ExportName.Equals(TEXT("None"), ESearchCase::IgnoreCase) &&
+			(ExportType.IsEmpty() || ExportType.Equals(TEXT("None"), ESearchCase::IgnoreCase)) &&
+			ExportClass.IsEmpty()) {
+			UE_LOG(LogCrimeForgeJsonImporterObjectSerializer, Verbose, TEXT("Skipping benign None sentinel export"));
+			return nullptr;
+		}
+
+		const FString Detail = FString::Printf(
 			TEXT("Skipping export %s because its class could not be resolved (Type=%s, Class=%s)"),
-			*Export->GetName().ToString(),
-			*Export->GetType().ToString(),
-			*Export->GetString(TEXT("Class")));
+			*ExportName, *ExportType, *ExportClass);
+		UE_LOG(LogCrimeForgeJsonImporterObjectSerializer, Warning, TEXT("%s"), *Detail);
+		FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Object export class"), Detail);
 		return nullptr;
 	}
 
@@ -247,7 +260,12 @@ void UObjectSerializer::DeserializeExport(FUObjectExport* Export, TMap<TSharedPt
 		Class = FindClassByType(Type);
 	}
 
-	if (!Class) return;
+	if (!Class) {
+		FCrimeForgeImportDiagnostics::RecordUnsupported(
+			TEXT("Object export class"),
+			FString::Printf(TEXT("Could not resolve class '%s' (fallback type '%s')"), *ClassName, *Type));
+		return;
+	}
 
 	const FString Outer = GetOuterFromObjectOuter(ExportObject->TryGetField(TEXT("Outer")));
 	UObject* ObjectOuter = nullptr;

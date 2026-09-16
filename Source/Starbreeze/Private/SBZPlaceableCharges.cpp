@@ -1,15 +1,17 @@
 #include "SBZPlaceableCharges.h"
+#include "Components/BoxComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "UObject/NoExportTypes.h"
 #include "UObject/NoExportTypes.h"
 #include "Net/UnrealNetwork.h"
 
-ASBZPlaceableCharges::ASBZPlaceableCharges(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer.SetDefaultSubobjectClass<UBoxComponent>(TEXT("BoxComp"))) {
+ASBZPlaceableCharges::ASBZPlaceableCharges(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) {
     this->Tags.AddDefaulted(1);
     this->InitialCharges = 6.00f;
     this->Charges = 0.00f;
     this->bRequiresRelativeLocation = false;
     this->ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
-    this->BoxComponent = (UBoxComponent*)RootComponent;
+    this->BoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxComp"));
     this->OutOfBoundsBoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("OutOfBoundsBoxComp"));
     this->CloakerBMMessage = NULL;
     this->PlaceableChargeState = ESBZPlaceableChargeState::None;
@@ -17,6 +19,7 @@ ASBZPlaceableCharges::ASBZPlaceableCharges(const FObjectInitializer& ObjectIniti
     this->bIsAIPlaced = false;
     this->ServerPlayerState = NULL;
     this->DropInPlacedMontage = NULL;
+    this->BoxComponent->SetupAttachment(RootComponent);
     this->OutOfBoundsBoxComponent->SetupAttachment(RootComponent);
 }
 

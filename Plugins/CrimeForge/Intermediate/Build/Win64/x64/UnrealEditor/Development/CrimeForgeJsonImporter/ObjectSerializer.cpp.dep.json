@@ -125,7 +125,8 @@
             "g:\\program files\\epic games\\ue5_pd3\\engine\\source\\runtime\\engine\\classes\\particles\\particlespriteemitter.h",
             "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\particlespriteemitter.generated.h",
             "g:\\program files\\epic games\\ue5_pd3\\engine\\intermediate\\build\\win64\\unrealeditor\\inc\\engine\\uht\\particlemoduletypedatagpu.generated.h",
-            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\settings\\runtime.h"
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\settings\\runtime.h",
+            "f:\\paydaymods\\ue5\\projects\\personal\\payday3\\plugins\\crimeforge\\source\\crimeforgejsonimporter\\public\\importers\\diagnostics\\importdiagnostics.h"
         ],
         "ImportedModules": [],
         "ImportedHeaderUnits": []

@@ -14,10 +14,12 @@
 
 #include "Modules/UI/StyleModule.h"
 #include "Modules/UI/Validation/ValidationTab.h"
+#include "Modules/UI/Import/SImportPathsDialog.h"
 #include "Modules/Toolbar/Toolbar.h"
 #include "Engine/EngineUtilities.h"
 #include "Modules/AssetBackend/AssetBackend.h"
 #include "Modules/AssetReader/AssetReader.h"
+#include "Importers/Cache/ImportDependencyCache.h"
 
 #include "Logging/LogVerbosity.h"
 #include "JsonGlobals.h"
@@ -61,6 +63,7 @@ namespace
 
 void FCrimeForgeJsonImporterModule::StartupModule() {
 	MigrateLegacyJsonImporterSettings();
+	FCrimeForgeImportDependencyCache::Load();
 
 	LogHttp.SetVerbosity(ELogVerbosity::Error);
 
@@ -78,6 +81,10 @@ void FCrimeForgeJsonImporterModule::StartupModule() {
 #if ENGINE_UE5
 	FValidationTab::Register();
 #endif
+
+	/* The importer is a global nomad tab so it can dock into the editor layout instead of
+	 * living in a separate native SWindow. */
+	SImportPathsDialog::RegisterTabSpawner();
 
     /* Register Toolbar */
 	Toolbar = NewObject<UCrimeForgeJsonImporterToolbar>();
@@ -107,6 +114,8 @@ void FCrimeForgeJsonImporterModule::StartupModule() {
 }
 
 void FCrimeForgeJsonImporterModule::ShutdownModule() {
+	FCrimeForgeImportDependencyCache::Flush();
+
 	/* The AssetReader provider belongs to this editor module, not a separate Core process. */
 	FCrimeForgeAssetReader::Get().Shutdown();
 
@@ -115,6 +124,8 @@ void FCrimeForgeJsonImporterModule::ShutdownModule() {
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
 #endif
+
+	SImportPathsDialog::UnregisterTabSpawner();
 
 #if ENGINE_UE5
 	/* The main menu bar entry is owned by the toolbar, not the module */

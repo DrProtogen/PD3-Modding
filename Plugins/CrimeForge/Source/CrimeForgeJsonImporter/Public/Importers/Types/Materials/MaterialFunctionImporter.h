@@ -1,5 +1,4 @@
 
-
 #pragma once
 
 #include "Importers/Constructor/Graph/MaterialGraph.h"

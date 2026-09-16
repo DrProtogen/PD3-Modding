@@ -79,6 +79,7 @@ class CRIMEFORGE_API UCrimeForgeSettings : public UObject
 
 public:
     static UCrimeForgeSettings* Get();
+    static bool AreExperimentalFeaturesEnabled();
     void SaveSettings();
 
     /* General ------------------------------------------------------------------------------ */
@@ -91,6 +92,9 @@ public:
 
     UPROPERTY(EditAnywhere, Config, Category = "General|PAYDAY 3", meta = (DisplayName = "Launch Game After Packing"))
     ECrimeForgeStartGameType LaunchGameAfterPacking = ECrimeForgeStartGameType::NONE;
+
+    UPROPERTY(EditAnywhere, Config, Category = "Experimental", meta = (DisplayName = "Enable Experimental Features", ToolTip = "Enables experimental PAYDAY 3 asset reading/importing features and shows the JSON Import toolbar button. Disabled by default."))
+    bool bEnableExperimentalFeatures = false;
 
     /* JSON Importer ------------------------------------------------------------------------ */
 

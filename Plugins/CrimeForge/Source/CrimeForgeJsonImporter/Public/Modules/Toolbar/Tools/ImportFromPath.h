@@ -1,23 +1,22 @@
-
-
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Importers/Constructor/ImportConflict.h"
 #include "Modules/Tools/ToolBase.h"
 
-/* Imports assets straight out of the asset backend by path.
- *
- * Everything else in CrimeForge JSON Importer starts from something already in the project: a selected asset, a
- * folder of json, a reference another import ran into. This one starts from the path alone, which
- * is the only way to reach an asset nothing in the project points at yet. */
+/* Imports assets straight out of the asset backend by path. */
 class TToolImportFromPath : public TToolBase {
 public:
 	void Execute();
 
 	/* Imports every queued path from the non-modal importer window. */
-	static void ImportPaths(const TArray<FString>& Paths);
+	static void ImportPaths(
+		const TArray<FString>& Paths,
+		bool bImportReferencesRecursively = true,
+		ECrimeForgeImportMode Mode = ECrimeForgeImportMode::Update,
+		bool bResetDiagnostics = true);
 
-	/* Imports one asset. The path can be in either asset-backend or editor form, with or without an extension, an export name or a Type'...' wrapper around it.
-	 * False when the asset backend has nothing at that path, or the import itself failed. */
-	static bool Import(const FString& InPath);
+	/* Imports one asset. False when the backend has nothing at that path, the user skipped it,
+	 * it was already up to date, or reconstruction failed. Diagnostics distinguish those cases. */
+	static bool Import(const FString& InPath, bool bImportReferencesRecursively = true);
 };

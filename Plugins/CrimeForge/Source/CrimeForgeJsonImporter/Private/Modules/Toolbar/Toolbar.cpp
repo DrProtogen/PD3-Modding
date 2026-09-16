@@ -3,6 +3,7 @@
 #include "Modules/Toolbar/Toolbar.h"
 
 #include "CrimeForgeJsonImporter.h"
+#include "CrimeForgeSettings.h"
 #include "Engine/Compatibility.h"
 #include "Engine/EngineUtilities.h"
 
@@ -136,6 +137,10 @@ void UCrimeForgeJsonImporterToolbar::UE4Register(FToolBarBuilder& Builder) {
 IConsoleVariable* GCrimeForgeJsonImporterButtonVisibility = nullptr;
 
 bool UCrimeForgeJsonImporterToolbar::IsToolBarVisible() {
+	if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+		return false;
+	}
+
 	if (!GCrimeForgeJsonImporterRuntime.bEnableToolbarToggling) {
 		return true;
 	}
@@ -234,12 +239,24 @@ void UCrimeForgeJsonImporterToolbar::IsFitToFunction(TFunction<void(bool)> OnRes
 }
 
 void UCrimeForgeJsonImporterToolbar::ImportAction() {
+	if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+		SpawnPrompt(
+			"CrimeForge Experimental Features",
+			"Asset reading and importing are experimental and currently disabled. Enable Experimental Features in Project Settings -> Plugins -> CrimeForge to use them."
+		);
+		return;
+	}
+
 	/* The window itself contains useful local asset tools and settings, so opening it never depends
 	 * on AssetReader. Any action that needs PAYDAY 3 data initializes/builds the backend on demand. */
 	Import();
 }
 
 void UCrimeForgeJsonImporterToolbar::Import() {
+	if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+		return;
+	}
+
 	/* Update Runtime */
 	GCrimeForgeJsonImporterRuntime.Update();
 

@@ -17,6 +17,7 @@
 #include "Serializers/Structs/TimeSpanSerializer.h"
 
 #include "Settings/Runtime.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
 
 DECLARE_LOG_CATEGORY_CLASS(LogCrimeForgeJsonImporterPropertySerializer, Error, Log);
 
@@ -752,7 +753,11 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 	}
 #endif
 	else {
-		UE_LOG(LogCrimeForgeJsonImporterPropertySerializer, Fatal, TEXT("Found unsupported property type when deserializing value: %s"), *Property->GetClass()->GetName());
+		const FString Detail = FString::Printf(
+			TEXT("Unsupported property serializer for %s (%s)"),
+			*Property->GetName(), *Property->GetClass()->GetName());
+		UE_LOG(LogCrimeForgeJsonImporterPropertySerializer, Warning, TEXT("%s"), *Detail);
+		FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("Property type"), Detail);
 	}
 }
 

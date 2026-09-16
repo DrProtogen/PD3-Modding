@@ -1,6 +1,6 @@
 #pragma once
 #include "CoreMinimal.h"
-#include "UObject/NoExportTypes.h"
+#include "Blueprint/UserWidget.h"
 #include "SBZWidgetBase.generated.h"
 
 UCLASS(Blueprintable, EditInlineNew)

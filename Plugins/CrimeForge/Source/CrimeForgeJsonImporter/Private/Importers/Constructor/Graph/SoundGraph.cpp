@@ -2,11 +2,15 @@
 
 #include "Importers/Constructor/Graph/SoundGraph.h"
 #include "Importers/Constructor/ImportConflict.h"
+#include "Importers/Transaction/ImportTransaction.h"
+#include "Importers/Diagnostics/ImportDiagnostics.h"
 
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
 #include "Misc/MessageDialog.h"
+#include "Misc/PackageName.h"
 #include "Modules/AssetBackend/AssetBackend.h"
+#include "Settings/Runtime.h"
 #include "Sound/SoundCue.h"
 
 /* 4.25 and below build this module without the engine's shared PCH (see CrimeForgeJsonImporter.Build.cs),
@@ -124,12 +128,13 @@ void ISoundGraph::SetupNodes(const USoundCue* SoundCueAsset, TMap<FString, USoun
 					AssetPtr = NodeProperties->GetStringField(TEXT("SoundWaveAssetPtr"));
 				}
 
-				USoundWave* SoundWave = LoadObjectByPath<USoundWave>(AssetPtr);
+				const FString ObjectPath = StripObjectOuter(AssetPtr);
+				USoundWave* SoundWave = LoadObjectByPath<USoundWave>(ObjectPath);
 				
 				/* Already exists */
 				if (SoundWave != nullptr) {
 					WavePlayerNode->SetSoundWave(SoundWave);
-				} else {
+				} else if (GCrimeForgeJsonImporterRuntime.bImportReferencesRecursively) {
 					const TSharedPtr<FJsonObject> Response = AssetBackend::Export::GetRawBlocking(AssetPtr, {
 						{
 							"save",
@@ -157,11 +162,26 @@ void ISoundGraph::ConnectSoundNode(const USoundNode* NodeToConnect, const USound
 }
 
 void ISoundGraph::OnDownloadSoundWave(const FString& SavePath, FString AssetPtr, USoundNodeWavePlayer* Node) {
-	if (!FImportConflict::ShouldImportAsset(AssetPtr, TEXT("SoundWave"))) {
+	/* Cooked exports may wrap object references as SoundWave'/Game/...'. Keep the display/source
+	 * string but use a canonical Unreal object path for conflict, transaction and AssetTools work. */
+	const FString ObjectPath = StripObjectOuter(AssetPtr);
+	if (!FImportConflict::ShouldImportAsset(ObjectPath, TEXT("SoundWave"), nullptr, nullptr, AssetPtr)) {
+		/* Reference/skip/up-to-date decisions should still leave the cue connected to the asset
+		 * CrimeForge deliberately chose not to rebuild. */
+		if (Node) Node->SetSoundWave(LoadObjectByPath<USoundWave>(ObjectPath));
+		return;
+	}
+
+	FCrimeForgeImportTransaction ReplacementTransaction(ObjectPath, FImportConflict::IsReplacementApproved(ObjectPath));
+	if (!ReplacementTransaction.IsReady()) {
+		const FString Reason = ReplacementTransaction.GetFailureReason().IsEmpty() ? TEXT("Could not create SoundWave replacement backup") : ReplacementTransaction.GetFailureReason();
+		FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("SoundWave replacement"), Reason);
+		UE_LOG(LogCrimeForgeJsonImporter, Error, TEXT("CrimeForge SoundWave replacement aborted for %s: %s"), *AssetPtr, *Reason);
 		return;
 	}
 
 	if (!FPaths::FileExists(SavePath)) {
+		ReplacementTransaction.Rollback(TEXT("downloaded SoundWave payload was missing"));
 		AppendNotification(
 			FText::FromString("Failed: " + AssetPtr),
 			FText::FromString("Failed to download sound wave"),
@@ -178,22 +198,23 @@ void ISoundGraph::OnDownloadSoundWave(const FString& SavePath, FString AssetPtr,
 	ImportData->Filenames.Add(SavePath);
 	
 	
-	ImportData->DestinationPath = FPaths::GetPath(AssetPtr);
+	const FString PackageName = FPackageName::ObjectPathToPackageName(ObjectPath);
+	ImportData->DestinationPath = !PackageName.IsEmpty() ? FPackageName::GetLongPackagePath(PackageName) : FPaths::GetPath(ObjectPath);
 	ImportData->bReplaceExisting = true;
 	
 	auto AssetsImported = AssetTools.ImportAssetsAutomated(ImportData);
 	if (!AssetsImported.IsValidIndex(0)) {
-		USoundWave* SoundWave = LoadObjectByPath<USoundWave>(AssetPtr);
-		if (Node) {
-			Node->SetSoundWave(SoundWave);
-		}
-		
+		ReplacementTransaction.Rollback(TEXT("automated SoundWave import returned no asset"));
+		USoundWave* SoundWave = LoadObjectByPath<USoundWave>(ObjectPath);
+		if (Node) Node->SetSoundWave(SoundWave);
+		FCrimeForgeImportDiagnostics::RecordUnsupported(TEXT("SoundWave import"), FString::Printf(TEXT("Automated import returned no asset for %s"), *AssetPtr));
 		return;
 	}
 	
 	USoundWave* ImportedWave = Cast<USoundWave>(AssetsImported[0]);
 
 	if (!ImportedWave) {
+		ReplacementTransaction.Rollback(TEXT("automated SoundWave import returned a non-SoundWave object"));
 		AppendNotification(
 			FText::FromString("Failed: " + AssetPtr),
 			FText::FromString("Failed to import sound wave"),
@@ -206,6 +227,7 @@ void ISoundGraph::OnDownloadSoundWave(const FString& SavePath, FString AssetPtr,
 	}
 
 	ImportedWave->AssetImportData = nullptr;
+	ReplacementTransaction.Commit();
 
 	if (Node) {
 		Node->SetSoundWave(ImportedWave);

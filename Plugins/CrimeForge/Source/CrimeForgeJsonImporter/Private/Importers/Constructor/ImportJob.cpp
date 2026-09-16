@@ -1,6 +1,7 @@
 
 
 #include "Importers/Constructor/ImportJob.h"
+#include "CrimeForgeSettings.h"
 
 #include "Editor.h"
 #include "TimerManager.h"
@@ -256,6 +257,11 @@ namespace {
 }
 
 void FImportJob::Enqueue(const TArray<FString>& Files) {
+	if (!UCrimeForgeSettings::AreExperimentalFeaturesEnabled()) {
+		UE_LOG(LogCrimeForgeJsonImporter, Warning, TEXT("Asset import was blocked because CrimeForge Experimental Features are disabled."));
+		return;
+	}
+
 	if (Files.Num() == 0) {
 		return;
 	}

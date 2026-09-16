@@ -14,6 +14,12 @@
  * into the embedded CrimeForge.AssetReader/CUE4Parse backend hosted inside Unreal Editor. Keeping this
  * class narrow avoids touching the serializer/importer code simply because its transport changed.
  */
+
+struct FCrimeForgeFolderAssetEntry {
+    FString Path;
+    FString Type;
+};
+
 class CRIMEFORGEJSONIMPORTER_API AssetBackend {
 public:
     class CRIMEFORGEJSONIMPORTER_API Status {
@@ -57,6 +63,7 @@ public:
 public:
     class CRIMEFORGEJSONIMPORTER_API Folder {
     public:
+        static TArray<FCrimeForgeFolderAssetEntry> GetAssetsBlocking(const FString& Path);
         static TArray<FString> GetPathsBlocking(const FString& Path);
     };
 

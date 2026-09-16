@@ -1,6 +1,7 @@
 
 
 #include "Importers/Types/Blueprint/BlueprintImporter.h"
+#include "Settings/Runtime.h"
 
 #include "KismetCompilerModule.h"
 #include "MovieScene.h"
@@ -321,14 +322,27 @@ UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 				GeneratedClass
 			);
 
-	/* Propagate blueprint defaults if it already exists */
+	/* Propagate blueprint defaults if it already exists. Keep the original Blueprint reconstruction
+	 * ordering intact; replacement safety is handled by the outer import transaction and by avoiding
+	 * the immediate auto-formatter/editor open after a replacement. */
 	if (const UBlueprint* ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *GetPackage()->GetPathName())) {
+		bReplacingExistingBlueprint = true;
+
 		UBlueprintGeneratedClass* BlueprintGeneratedClass = Cast<UBlueprintGeneratedClass>(ExistingBlueprint->GeneratedClass);
+		if (!BlueprintGeneratedClass) {
+			UE_LOG(LogCrimeForgeJsonImporter, Error,
+				TEXT("CrimeForge: existing Blueprint %s has no generated class; replacement aborted"),
+				*ExistingBlueprint->GetPathName());
+			return nullptr;
+		}
+
 		FBlueprintEditorUtils::PropagateParentBlueprintDefaults(BlueprintGeneratedClass);
 
 		/* Return GeneratedClass instead of UBlueprint* */
 		return IImporter::CreateAsset(BlueprintGeneratedClass);
 	}
+
+	bReplacingExistingBlueprint = false;
 
 	const UBlueprint* CreatedBlueprint = FKismetEditorUtilities::CreateBlueprint(
 		Class,
@@ -348,7 +362,7 @@ UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 bool IBlueprintImporter::Import() {
 	const FString CurrentPackage = GetPackage() ? GetPackage()->GetName() : FString();
 	const FBlueprintDependencyTreeScope DependencyTreeScope(CurrentPackage);
-	if (GetSettings()->bImportBlueprintDependenciesBeforeGraphs) {
+	if (GetSettings()->bImportBlueprintDependenciesBeforeGraphs && GCrimeForgeJsonImporterRuntime.bImportReferencesRecursively) {
 		const int32 DependencyCount = ImportBlueprintDependenciesFirst(GetContainer(), CurrentPackage);
 		if (DependencyCount > 0) {
 			UE_LOG(LogCrimeForgeJsonImporter, Display,
@@ -397,14 +411,69 @@ bool IBlueprintImporter::Import() {
 	ConstructScript();
 	ConstructWidgetTree();
 
+	/* Replacing an existing Blueprint swaps in a newly reconstructed SCS, but the generated class
+	 * still describes the previous component-variable layout until Unreal performs a structural
+	 * compile. That leaves reconstructed K2 variable nodes unable to resolve component properties
+	 * such as PointLight/SBZOutline even though those components already exist in the SCS.
+	 *
+	 * Synchronize the generated class here, before graph reconstruction, so variable/function node
+	 * resolution sees the replacement component hierarchy. Keep the original SCS reconstruction
+	 * order intact: no pointer clearing, no node refresh and no editor-open side effects. */
+	if (bReplacingExistingBlueprint && GetAssetDataAsValue().Has(TEXT("SimpleConstructionScript"))) {
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+
+		if (!Blueprint->GeneratedClass) {
+			UE_LOG(LogCrimeForgeJsonImporter, Error,
+				TEXT("CrimeForge: replacement structural compile for %s did not produce a generated class"),
+				*Blueprint->GetPathName());
+			return false;
+		}
+
+		UE_LOG(LogCrimeForgeJsonImporter, Display,
+			TEXT("CrimeForge: synchronized generated class with replacement component hierarchy for %s"),
+			*Blueprint->GetName());
+	}
+
 	/* FModel already exports structured Kismet ScriptBytecode for Blueprint functions. Rebuild the
 	 * editable K2 function graphs after the component/widget tree exists so widget variables and
 	 * referenced generated classes are available to variable/function node resolution. */
 	ConstructBlueprintGraphs();
 
+	/* Existing assets can arrive with a stale/error compilation state from an earlier incomplete
+	 * import. After the replacement components and graphs have both been reconstructed, perform a
+	 * final structural compile so the saved asset reflects the new hierarchy and graph references.
+	 * Do not RefreshAllNodes here: that was the invasive validation step that previously disturbed
+	 * preserved component-bound graphs. */
+	if (bReplacingExistingBlueprint && !IsDependencySignatureOnlyImport()) {
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+
+		if (Blueprint->Status == BS_Error) {
+			UE_LOG(LogCrimeForgeJsonImporter, Error,
+				TEXT("CrimeForge: replacement Blueprint %s still has compile errors after reconstruction"),
+				*Blueprint->GetPathName());
+			return false;
+		}
+
+		UE_LOG(LogCrimeForgeJsonImporter, Display,
+			TEXT("CrimeForge: replacement Blueprint %s compiled successfully after reconstruction"),
+			*Blueprint->GetName());
+	}
+
 	const bool bCreated = OnAssetCreation(Blueprint);
 	if (bCreated && GetSettings()->bAutoFormatBlueprintGraphs && !IsDependencySignatureOnlyImport()) {
-		FCrimeForgeBlueprintAutoFormatter::Enqueue(Blueprint, GetSettings()->bSaveImportedAssets);
+		if (bReplacingExistingBlueprint) {
+			/* The original replacement crash occurred when the formatter immediately opened the freshly
+			 * replaced Blueprint editor. Do not alter SCS reconstruction to solve that crash; simply defer
+			 * this cosmetic editor-open step for replacements. */
+			UE_LOG(LogCrimeForgeJsonImporter, Display,
+				TEXT("CrimeForge Blueprint formatter skipped immediate editor-open for replaced Blueprint %s"),
+				*Blueprint->GetName());
+		}
+		else {
+			FCrimeForgeBlueprintAutoFormatter::Enqueue(Blueprint, GetSettings()->bSaveImportedAssets);
+		}
 	}
 
 	return bCreated;

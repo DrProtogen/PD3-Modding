@@ -1,5 +1,4 @@
 
-
 #include "Importers/Types/Materials/MaterialFunctionImporter.h"
 #include "Factories/MaterialFunctionFactoryNew.h"
 
@@ -40,12 +39,6 @@ bool IMaterialFunctionImporter::Import() {
 
 	/* Map out each expression for easier access */
 	ConstructExpressions(ExpressionContainer);
-
-	/* No editor graph means there is no editable function to reconstruct. */
-	if (!Props.IsValid()) {
-		SpawnMaterialDataMissingNotification();
-		return false;
-	}
 
 	/* If Missing Material Data */
 	if (ExpressionContainer->Num() == 0) {
