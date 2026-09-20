@@ -9121,3 +9121,6 @@ Binaries/Win64/EOSSDK-Win64-Shipping.dll
 # CUE4Parse embedded resources required by the C# projects
 !Plugins/CrimeForge/Managed/Dependencies/CUE4Parse/CUE4Parse/Resources/**
 !Plugins/CrimeForge/Managed/Dependencies/CUE4Parse/CUE4Parse-Conversion/Resources/**
+
+*.jmap
+!Tools/**
