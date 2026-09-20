@@ -1,7 +1,0 @@
-#pragma once
-#include "CoreMinimal.h"
-#include "AccelByteModelsUserEntitlementHistoryPagingResult.h"
-#include "DAccelByteModelsEntitlementHistoryPagingResponseDelegate.generated.h"
-
-UDELEGATE(BlueprintCallable) DECLARE_DYNAMIC_DELEGATE_OneParam(FDAccelByteModelsEntitlementHistoryPagingResponse, FAccelByteModelsUserEntitlementHistoryPagingResult, Response);
-

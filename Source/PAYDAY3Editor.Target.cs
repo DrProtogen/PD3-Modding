@@ -1,4 +1,4 @@
-﻿using UnrealBuildTool;
+using UnrealBuildTool;
 
 public class PAYDAY3EditorTarget : TargetRules {
 	public PAYDAY3EditorTarget(TargetInfo Target) : base(Target) {
@@ -8,8 +8,6 @@ public class PAYDAY3EditorTarget : TargetRules {
 		CppStandard = CppStandardVersion.Cpp20;
 		
 		ExtraModuleNames.AddRange(new string[] {
-			"SBZWorldRuntime",
-			"Starbreeze",
 		});
 	}
 }

@@ -1,9 +1,0 @@
-#include "SBZRandomizedRoom.h"
-#include "UObject/NoExportTypes.h"
-
-ASBZRandomizedRoom::ASBZRandomizedRoom(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) {
-    this->RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
-    this->ReloadAfterSave = true;
-}
-
-

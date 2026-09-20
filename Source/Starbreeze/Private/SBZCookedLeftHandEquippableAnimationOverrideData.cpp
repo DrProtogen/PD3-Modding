@@ -1,5 +1,0 @@
-#include "SBZCookedLeftHandEquippableAnimationOverrideData.h"
-
-FSBZCookedLeftHandEquippableAnimationOverrideData::FSBZCookedLeftHandEquippableAnimationOverrideData() {
-}
-

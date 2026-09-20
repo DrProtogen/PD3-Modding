@@ -1,5 +1,0 @@
-#include "AccelByteModelsUGCBulkGetContentByShareCodeRequest.h"
-
-FAccelByteModelsUGCBulkGetContentByShareCodeRequest::FAccelByteModelsUGCBulkGetContentByShareCodeRequest() {
-}
-

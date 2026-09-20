@@ -1,5 +1,0 @@
-#include "AccelByteModelsGlobalAchievementGetContributorsPayload.h"
-
-FAccelByteModelsGlobalAchievementGetContributorsPayload::FAccelByteModelsGlobalAchievementGetContributorsPayload() {
-}
-

@@ -1,5 +1,0 @@
-#include "AccelByteModelsLeaderboardGetLeaderboardsPayload.h"
-
-FAccelByteModelsLeaderboardGetLeaderboardsPayload::FAccelByteModelsLeaderboardGetLeaderboardsPayload() {
-}
-

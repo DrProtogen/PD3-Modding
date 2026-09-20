@@ -1,8 +1,0 @@
-{
-	"BuildId": "37670630",
-	"Modules": 
-	{
-		"DLSS": "UnrealEditor-DLSS.dll",
-		"DLSSBlueprint": "UnrealEditor-DLSSBlueprint.dll"
-	}
-}

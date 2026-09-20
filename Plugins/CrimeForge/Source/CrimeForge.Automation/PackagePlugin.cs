@@ -640,7 +640,13 @@ namespace CrimeForge.Automation
 
 				// Original CrimeForge DLC configuration.
 				Cook: true,
-				AdditionalCookerOptions: "-AllowUncookedAssetReferences -ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning",
+				// Keep quoted LogCmds out of AdditionalCookerOptions. UAT appends this string
+				// directly to the CookCommandlet command line, and the embedded quotes can
+				// swallow -dlcname / -basedonreleaseversion / -abslog.
+				AdditionalCookerOptions: "-AllowUncookedAssetReferences " +
+					"-ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning " +
+					"-ini:Engine:[Core.Log]:LogAkAudio=Fatal " +
+					"-ini:Engine:[Core.Log]:LogAudiokineticTools=Fatal",
 				UnversionedCookedContent: true,
 				SkipCookingEditorContent: true,
 				DLCIncludeEngineContent: false,
@@ -1379,7 +1385,9 @@ namespace CrimeForge.Automation
 
 			string additionalCookerOptions =
 				"-AllowUncookedAssetReferences "
-				+ "-ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning"
+				+ "-ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning "
+				+ "-ini:Engine:[Core.Log]:LogAkAudio=Fatal "
+				+ "-ini:Engine:[Core.Log]:LogAudiokineticTools=Fatal"
 				+ BuildExactPass2CookOptions(palManifest);
 
 			LogInformation(

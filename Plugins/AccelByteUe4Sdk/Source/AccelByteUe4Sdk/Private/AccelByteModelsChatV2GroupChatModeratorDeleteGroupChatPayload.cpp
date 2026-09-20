@@ -1,5 +1,0 @@
-#include "AccelByteModelsChatV2GroupChatModeratorDeleteGroupChatPayload.h"
-
-FAccelByteModelsChatV2GroupChatModeratorDeleteGroupChatPayload::FAccelByteModelsChatV2GroupChatModeratorDeleteGroupChatPayload() {
-}
-

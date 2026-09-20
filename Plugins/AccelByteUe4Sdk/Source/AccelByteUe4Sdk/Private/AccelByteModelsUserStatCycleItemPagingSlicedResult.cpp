@@ -1,5 +1,0 @@
-#include "AccelByteModelsUserStatCycleItemPagingSlicedResult.h"
-
-FAccelByteModelsUserStatCycleItemPagingSlicedResult::FAccelByteModelsUserStatCycleItemPagingSlicedResult() {
-}
-

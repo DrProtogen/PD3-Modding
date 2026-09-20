@@ -1,6 +1,0 @@
-#include "SBZReactionPredicate_RoomSoundDistance_HasNoEnemy.h"
-
-UDEPRECATED_SBZReactionPredicate_RoomSoundDistance_HasNoEnemy::UDEPRECATED_SBZReactionPredicate_RoomSoundDistance_HasNoEnemy() {
-}
-
-

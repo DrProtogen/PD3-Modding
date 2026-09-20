@@ -17,7 +17,7 @@ void EmptyLinkFunctionForGeneratedCodeCrimeForgeJsonImporter_init() {}
 				nullptr,
 				0,
 				PKG_CompiledIn | 0x00000040,
-				0xCA98FDF2,
+				0x3E5B4D07,
 				0x6CC4AB3A,
 				METADATA_PARAMS(0, nullptr)
 			};
@@ -25,5 +25,5 @@ void EmptyLinkFunctionForGeneratedCodeCrimeForgeJsonImporter_init() {}
 		}
 		return Z_Registration_Info_UPackage__Script_CrimeForgeJsonImporter.OuterSingleton;
 	}
-	static FRegisterCompiledInInfo Z_CompiledInDeferPackage_UPackage__Script_CrimeForgeJsonImporter(Z_Construct_UPackage__Script_CrimeForgeJsonImporter, TEXT("/Script/CrimeForgeJsonImporter"), Z_Registration_Info_UPackage__Script_CrimeForgeJsonImporter, CONSTRUCT_RELOAD_VERSION_INFO(FPackageReloadVersionInfo, 0xCA98FDF2, 0x6CC4AB3A));
+	static FRegisterCompiledInInfo Z_CompiledInDeferPackage_UPackage__Script_CrimeForgeJsonImporter(Z_Construct_UPackage__Script_CrimeForgeJsonImporter, TEXT("/Script/CrimeForgeJsonImporter"), Z_Registration_Info_UPackage__Script_CrimeForgeJsonImporter, CONSTRUCT_RELOAD_VERSION_INFO(FPackageReloadVersionInfo, 0x3E5B4D07, 0x6CC4AB3A));
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

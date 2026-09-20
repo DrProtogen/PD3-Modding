@@ -1,58 +1,23 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
 using UnrealBuildTool;
 
-public class PAYDAY3 : ModuleRules {
-    public PAYDAY3(ReadOnlyTargetRules Target) : base(Target) {
-        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        bLegacyPublicIncludePaths = false;
-        ShadowVariableWarningLevel = WarningLevel.Warning;
-        
-        PublicDependencyModuleNames.AddRange(new string[] {
-            "AIModule",
-            "AccelByteUe4Sdk",
-            "AkAudio",
-            "AnimGraphRuntime",
-            "AnimationBudgetAllocator",
-            "AnimationCore",
-            "AudioExtensions",
-            "AudioMixer",
-            "AudioPlatformConfiguration",
-            "CableComponent",
-            "Chaos",
-            "ClothingSystemRuntimeInterface",
-            "Core",
-            "CoreUObject",
-            "DataRegistry",
-            "DeveloperSettings",
-            "Engine",
-            "GameplayAbilities",
-            "GameplayTags",
-            "GameplayTasks",
-            "InputCore",
-            "JsonUtilities",
-            "Landscape",
-            "MeshDescription",
-            "MovieScene",
-            "MovieSceneTracks",
-            "NavigationSystem",
-            "Niagara",
-            "NiagaraCore",
-            "NiagaraShader",
-            "OnlineSubsystem",
-            "OnlineSubsystemUtils",
-            "PacketHandler",
-            "Paper2D",
-            "PhysicsCore",
-            "PropertyPath",
-            "ReplicationGraph",
-            "Starbreeze",
-            "SBZWorldRuntime",
-            "SBZAnalyticsLegacy",
-            "SBZStateMachineBase",
-            "SBZUtilityPlugin",
-            "Slate",
-            "SlateCore",
-            "StaticMeshDescription",
-            "UMG",
-        });
-    }
+public class PAYDAY3 : ModuleRules
+{
+	public PAYDAY3(ReadOnlyTargetRules Target) : base(Target)
+	{
+		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+	
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
+
+		PrivateDependencyModuleNames.AddRange(new string[] {  });
+
+		// Uncomment if you are using Slate UI
+		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+		
+		// Uncomment if you are using online features
+		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
+
+		// To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
+	}
 }

@@ -14,11 +14,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
+      "projectUniqueName": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3 Source\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
       "projectName": "CrimeForge.Automation",
-      "projectPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
+      "projectPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3 Source\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
       "packagesPath": "C:\\Users\\Nwali\\.nuget\\packages\\",
-      "outputPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\obj\\",
+      "outputPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3 Source\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -71,7 +71,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "G:\\Program Files\\Epic Games\\UE5_PD3\\Engine\\Binaries\\ThirdParty\\DotNet\\8.0.300\\win-x64\\sdk\\8.0.300/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "E:\\EpicGames\\UnrealEngine-PD3Compatibility\\Engine\\Binaries\\ThirdParty\\DotNet\\8.0.300\\win-x64\\sdk\\8.0.300/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

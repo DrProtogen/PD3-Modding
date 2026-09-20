@@ -1,5 +1,0 @@
-#include "AccelByteModelsPlayerBinaryRecordRecordUpdatedPayload.h"
-
-FAccelByteModelsPlayerBinaryRecordRecordUpdatedPayload::FAccelByteModelsPlayerBinaryRecordRecordUpdatedPayload() {
-}
-

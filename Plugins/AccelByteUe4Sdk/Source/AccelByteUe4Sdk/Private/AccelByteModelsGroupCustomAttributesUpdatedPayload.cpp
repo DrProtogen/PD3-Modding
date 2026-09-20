@@ -1,5 +1,0 @@
-#include "AccelByteModelsGroupCustomAttributesUpdatedPayload.h"
-
-FAccelByteModelsGroupCustomAttributesUpdatedPayload::FAccelByteModelsGroupCustomAttributesUpdatedPayload() {
-}
-

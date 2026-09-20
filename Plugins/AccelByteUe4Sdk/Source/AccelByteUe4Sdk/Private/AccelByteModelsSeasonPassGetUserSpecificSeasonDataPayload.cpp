@@ -1,5 +1,0 @@
-#include "AccelByteModelsSeasonPassGetUserSpecificSeasonDataPayload.h"
-
-FAccelByteModelsSeasonPassGetUserSpecificSeasonDataPayload::FAccelByteModelsSeasonPassGetUserSpecificSeasonDataPayload() {
-}
-

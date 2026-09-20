@@ -1,7 +1,0 @@
-#pragma once
-#include "CoreMinimal.h"
-#include "AccelByteModelsGlobalStatItemPagingSlicedResult.h"
-#include "DModelsGlobalStatItemPagingSlicedResultResponseDelegate.generated.h"
-
-UDELEGATE(BlueprintCallable) DECLARE_DYNAMIC_DELEGATE_OneParam(FDModelsGlobalStatItemPagingSlicedResultResponse, FAccelByteModelsGlobalStatItemPagingSlicedResult, Response);
-

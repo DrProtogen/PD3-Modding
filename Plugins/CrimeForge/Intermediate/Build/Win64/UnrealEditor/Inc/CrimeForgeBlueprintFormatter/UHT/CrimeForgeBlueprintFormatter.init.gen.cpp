@@ -17,7 +17,7 @@ void EmptyLinkFunctionForGeneratedCodeCrimeForgeBlueprintFormatter_init() {}
 				nullptr,
 				0,
 				PKG_CompiledIn | 0x00000040,
-				0x4E49CA21,
+				0x8C6484BC,
 				0xC4E3AF7E,
 				METADATA_PARAMS(0, nullptr)
 			};
@@ -25,5 +25,5 @@ void EmptyLinkFunctionForGeneratedCodeCrimeForgeBlueprintFormatter_init() {}
 		}
 		return Z_Registration_Info_UPackage__Script_CrimeForgeBlueprintFormatter.OuterSingleton;
 	}
-	static FRegisterCompiledInInfo Z_CompiledInDeferPackage_UPackage__Script_CrimeForgeBlueprintFormatter(Z_Construct_UPackage__Script_CrimeForgeBlueprintFormatter, TEXT("/Script/CrimeForgeBlueprintFormatter"), Z_Registration_Info_UPackage__Script_CrimeForgeBlueprintFormatter, CONSTRUCT_RELOAD_VERSION_INFO(FPackageReloadVersionInfo, 0x4E49CA21, 0xC4E3AF7E));
+	static FRegisterCompiledInInfo Z_CompiledInDeferPackage_UPackage__Script_CrimeForgeBlueprintFormatter(Z_Construct_UPackage__Script_CrimeForgeBlueprintFormatter, TEXT("/Script/CrimeForgeBlueprintFormatter"), Z_Registration_Info_UPackage__Script_CrimeForgeBlueprintFormatter, CONSTRUCT_RELOAD_VERSION_INFO(FPackageReloadVersionInfo, 0x8C6484BC, 0xC4E3AF7E));
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

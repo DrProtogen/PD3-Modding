@@ -8,9 +8,7 @@ public class PAYDAY3Target : TargetRules {
 		CppStandard = CppStandardVersion.Cpp20;
 		
 		ExtraModuleNames.AddRange(new string[] {
-			"PAYDAY3",
-			"SBZWorldRuntime",
-			"Starbreeze",
+			"PAYDAY3"
 		});
 	}
 }

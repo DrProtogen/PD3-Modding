@@ -1,5 +1,0 @@
-#include "AccelByteModelsDSBackfillProposalRejectedPayload.h"
-
-FAccelByteModelsDSBackfillProposalRejectedPayload::FAccelByteModelsDSBackfillProposalRejectedPayload() {
-}
-

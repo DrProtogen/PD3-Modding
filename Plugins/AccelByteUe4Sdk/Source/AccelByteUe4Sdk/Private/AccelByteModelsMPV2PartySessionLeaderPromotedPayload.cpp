@@ -1,5 +1,0 @@
-#include "AccelByteModelsMPV2PartySessionLeaderPromotedPayload.h"
-
-FAccelByteModelsMPV2PartySessionLeaderPromotedPayload::FAccelByteModelsMPV2PartySessionLeaderPromotedPayload() {
-}
-

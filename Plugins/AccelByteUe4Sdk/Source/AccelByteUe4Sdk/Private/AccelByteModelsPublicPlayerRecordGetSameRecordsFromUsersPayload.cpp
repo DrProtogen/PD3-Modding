@@ -1,5 +1,0 @@
-#include "AccelByteModelsPublicPlayerRecordGetSameRecordsFromUsersPayload.h"
-
-FAccelByteModelsPublicPlayerRecordGetSameRecordsFromUsersPayload::FAccelByteModelsPublicPlayerRecordGetSameRecordsFromUsersPayload() {
-}
-

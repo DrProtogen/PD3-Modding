@@ -1,5 +1,0 @@
-#include "AccelByteModelsV2MatchmakingBackfillAcceptanceOptionalParam.h"
-
-FAccelByteModelsV2MatchmakingBackfillAcceptanceOptionalParam::FAccelByteModelsV2MatchmakingBackfillAcceptanceOptionalParam() {
-}
-

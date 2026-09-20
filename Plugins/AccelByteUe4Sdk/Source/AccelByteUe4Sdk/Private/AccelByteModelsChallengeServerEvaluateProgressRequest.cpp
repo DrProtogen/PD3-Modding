@@ -1,5 +1,0 @@
-#include "AccelByteModelsChallengeServerEvaluateProgressRequest.h"
-
-FAccelByteModelsChallengeServerEvaluateProgressRequest::FAccelByteModelsChallengeServerEvaluateProgressRequest() {
-}
-
