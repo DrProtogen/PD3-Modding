@@ -283,6 +283,35 @@ Check that the required Wwise third-party SDK files are installed under:
 Plugins/Wwise/
 ```
 
+## Plugin modules fail to load even though the plugin and DLLs are present
+
+If Unreal reports that a plugin module cannot be found or loaded, for example:
+
+```text
+Plugin 'Wwise' failed to load because module 'Wwise' could not be found.
+```
+
+and the plugin folder and DLLs are already present, the plugin may have stale build artifacts from a different editor build.
+
+Close Unreal Editor, then delete the `Binaries` and `Intermediate` folders for the affected plugin or plugins. For example:
+
+```text
+Plugins/Wwise/Binaries/
+Plugins/Wwise/Intermediate/
+
+Plugins/Suzie/Binaries/
+Plugins/Suzie/Intermediate/
+
+Plugins/CrimeForge/Binaries/
+Plugins/CrimeForge/Intermediate/
+```
+
+Then open the PD3-Modkit solution (`.sln`) and build the project using the custom UE5-PD3 Editor configuration.
+
+This regenerates the plugin binaries and module manifests against the current editor build. After the build completes, reopen the project.
+
+You only need to remove the generated folders for the plugins that are failing to load.
+
 ## Assets fail to load after a game update
 
 Regenerate and replace both:
