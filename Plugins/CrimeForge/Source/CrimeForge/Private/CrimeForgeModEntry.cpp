@@ -3814,7 +3814,20 @@ bool SCrimeForgeModEntry::RunPreflightValidation() const
 			const FString DependencyString =
 				DependencyName.ToString();
 
-			if (DependencyString.Contains(
+			// Only treat PLACEHOLDER_* dependencies inside this mod's own
+			// plugin mount as stale CrimeForge template leftovers.
+			//
+			// PAYDAY 3 legitimately contains base-game /Game assets whose
+			// real names include PLACEHOLDER_ (for example the Wwise
+			// PLACEHOLDER_UI_confirm / PLACEHOLDER_UI_highlight events).
+			// Those are valid external dependencies and must not block forge.
+			const bool bDependencyIsInsideThisPlugin =
+				DependencyString.StartsWith(
+					PluginContentPath,
+					ESearchCase::IgnoreCase);
+
+			if (bDependencyIsInsideThisPlugin &&
+				DependencyString.Contains(
 					TEXT("PLACEHOLDER_"),
 					ESearchCase::IgnoreCase))
 			{
@@ -3826,7 +3839,7 @@ bool SCrimeForgeModEntry::RunPreflightValidation() const
 
 	if (PlaceholderDependencyPackages.Num() == 0)
 	{
-		Result.Pass(TEXT("No stale PLACEHOLDER_* package references were found."));
+		Result.Pass(TEXT("No stale PLACEHOLDER_* package references were found inside the mod plugin."));
 	}
 	else
 	{
