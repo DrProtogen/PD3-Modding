@@ -231,10 +231,203 @@ namespace CrimeForge.Automation
 
 	public class PackagePlugin : BuildCommand
 	{
-		private const string GameExecutableName = "PAYDAY3.exe";
+		private const string DesktopGameExecutableName = "PAYDAY3.exe";
+		private const string WinGDKGameExecutableName = "PAYDAY3-WinGDK-Shipping.exe";
+		private const string WinGDKClientExecutableName = "PAYDAY3Client-WinGDK-Shipping.exe";
 		private const string SteamAppId = "1272080";
 		private const string ModDeployRoot = "Mods";
 		private const string DefaultBaseReleaseVersion = "SOMERELEASE1";
+
+		private sealed class PD3GameLayout
+		{
+			public string InstallDirectory;
+			public string GameContentDirectory;
+			public string ExecutablePath;
+			public string PaksDirectory;
+			public string ModsDirectory;
+			public bool IsMicrosoftStore;
+		}
+
+		private static PD3GameLayout TryCreateGameLayout(
+			string installDirectory,
+			string gameContentDirectory,
+			string executablePath,
+			bool isMicrosoftStore)
+		{
+			if (string.IsNullOrWhiteSpace(installDirectory) ||
+			    string.IsNullOrWhiteSpace(gameContentDirectory) ||
+			    string.IsNullOrWhiteSpace(executablePath))
+			{
+				return null;
+			}
+
+			var paksDirectory = Path.Combine(
+				gameContentDirectory,
+				"Content",
+				"Paks");
+
+			if (!Directory.Exists(installDirectory) ||
+			    !Directory.Exists(gameContentDirectory) ||
+			    !File.Exists(executablePath) ||
+			    !Directory.Exists(paksDirectory))
+			{
+				return null;
+			}
+
+			return new PD3GameLayout
+			{
+				InstallDirectory = Path.GetFullPath(installDirectory),
+				GameContentDirectory = Path.GetFullPath(gameContentDirectory),
+				ExecutablePath = Path.GetFullPath(executablePath),
+				PaksDirectory = Path.GetFullPath(paksDirectory),
+				ModsDirectory = Path.GetFullPath(
+					Path.Combine(gameContentDirectory, ModDeployRoot)),
+				IsMicrosoftStore = isMicrosoftStore
+			};
+		}
+
+		private static PD3GameLayout TryCreateWinGDKGameLayout(
+			string installDirectory,
+			string gameContentDirectory)
+		{
+			var winGDKDirectory = Path.Combine(
+				gameContentDirectory,
+				"Binaries",
+				"WinGDK");
+
+			foreach (var executableName in new[]
+			         {
+				         WinGDKGameExecutableName,
+				         WinGDKClientExecutableName
+			         })
+			{
+				var layout = TryCreateGameLayout(
+					installDirectory,
+					gameContentDirectory,
+					Path.Combine(winGDKDirectory, executableName),
+					true);
+
+				if (layout != null)
+				{
+					return layout;
+				}
+			}
+
+			return null;
+		}
+
+		private static PD3GameLayout ResolvePAYDAY3GameLayout(
+			string gameDirectory)
+		{
+			if (string.IsNullOrWhiteSpace(gameDirectory))
+			{
+				return null;
+			}
+
+			try
+			{
+				var inputDirectory = Path.GetFullPath(
+					gameDirectory.Trim().Trim('"'));
+
+				if (!Directory.Exists(inputDirectory))
+				{
+					return null;
+				}
+
+				// Steam / Epic install root.
+				var layout = TryCreateGameLayout(
+					inputDirectory,
+					Path.Combine(inputDirectory, "PAYDAY3"),
+					Path.Combine(inputDirectory, DesktopGameExecutableName),
+					false);
+
+				if (layout != null)
+				{
+					return layout;
+				}
+
+				// Also accept the desktop PAYDAY3 content root itself.
+				var parentDirectory = Directory.GetParent(inputDirectory)?.FullName;
+				if (!string.IsNullOrWhiteSpace(parentDirectory))
+				{
+					layout = TryCreateGameLayout(
+						parentDirectory,
+						inputDirectory,
+						Path.Combine(parentDirectory, DesktopGameExecutableName),
+						false);
+
+					if (layout != null)
+					{
+						return layout;
+					}
+				}
+
+				// Microsoft Store / Xbox install root.
+				layout = TryCreateWinGDKGameLayout(
+					inputDirectory,
+					Path.Combine(inputDirectory, "Content", "PAYDAY3"));
+
+				if (layout != null)
+				{
+					return layout;
+				}
+
+				// Also accept <Root>/Content/PAYDAY3 directly.
+				var contentParent = Directory.GetParent(inputDirectory)?.Parent?.FullName;
+				if (!string.IsNullOrWhiteSpace(contentParent))
+				{
+					layout = TryCreateWinGDKGameLayout(
+						contentParent,
+						inputDirectory);
+
+					if (layout != null)
+					{
+						return layout;
+					}
+				}
+
+				// And accept <Root>/Content/PAYDAY3/Binaries/WinGDK.
+				if (string.Equals(
+						Path.GetFileName(inputDirectory),
+						"WinGDK",
+						StringComparison.OrdinalIgnoreCase))
+				{
+					var gameContentDirectory = Path.GetFullPath(
+						Path.Combine(inputDirectory, "..", ".."));
+					var installDirectory = Path.GetFullPath(
+						Path.Combine(gameContentDirectory, "..", ".."));
+
+					layout = TryCreateWinGDKGameLayout(
+						installDirectory,
+						gameContentDirectory);
+
+					if (layout != null)
+					{
+						return layout;
+					}
+				}
+			}
+			catch (Exception)
+			{
+				return null;
+			}
+
+			return null;
+		}
+
+		private static PD3GameLayout RequirePAYDAY3GameLayout(
+			string gameDirectory)
+		{
+			var layout = ResolvePAYDAY3GameLayout(gameDirectory);
+			if (layout != null)
+			{
+				return layout;
+			}
+
+			throw new AutomationException(
+				"Provided -GameDir is invalid. Expected either a Steam/Epic PAYDAY3.exe install or a Microsoft Store/Xbox install containing Content\\PAYDAY3\\Binaries\\WinGDK\\PAYDAY3-WinGDK-Shipping.exe. Provided: '{0}'",
+				gameDirectory ?? "");
+		}
 
 		private static string NormalizeLaunchGameType(
 			string launchGameType)
@@ -443,25 +636,16 @@ namespace CrimeForge.Automation
 		private static void LaunchDirectPAYDAY3Executable(
 			string gameDirectory)
 		{
-			var executable =
-				Path.Combine(
-					gameDirectory ?? "",
-					GameExecutableName
-				);
-
-			if (!File.Exists(executable))
-			{
-				throw new AutomationException(
-					"Unable to launch PAYDAY 3 directly. Expected '{0}'.",
-					executable
-				);
-			}
+			var layout = RequirePAYDAY3GameLayout(gameDirectory);
+			var workingDirectory =
+				Path.GetDirectoryName(layout.ExecutablePath) ??
+				layout.InstallDirectory;
 
 			Process.Start(
-				new ProcessStartInfo(executable)
+				new ProcessStartInfo(layout.ExecutablePath)
 				{
 					UseShellExecute = true,
-					WorkingDirectory = gameDirectory
+					WorkingDirectory = workingDirectory
 				}
 			);
 		}
@@ -508,7 +692,7 @@ namespace CrimeForge.Automation
 				}
 
 				LogWarning(
-					"PAYDAY 3 was not found in Epic's installed-game manifests. Falling back to GameDir/PAYDAY3.exe."
+					"PAYDAY 3 was not found in Epic's installed-game manifests. Falling back to the executable resolved from GameDir."
 				);
 
 				LaunchDirectPAYDAY3Executable(
@@ -541,7 +725,7 @@ namespace CrimeForge.Automation
 				}
 
 				LogWarning(
-					"PAYDAY 3 Microsoft Store/Xbox AUMID could not be detected. Falling back to GameDir/PAYDAY3.exe."
+					"PAYDAY 3 Microsoft Store/Xbox AUMID could not be detected. Falling back to the WinGDK executable resolved from GameDir."
 				);
 
 				LaunchDirectPAYDAY3Executable(
@@ -593,13 +777,11 @@ namespace CrimeForge.Automation
 			string pluginName,
 			string pluginDirectory)
 		{
-			// PAYDAY 3 runtime layout:
-			// <GameDir>/PAYDAY3/Mods/<PluginName>
-			var modsDir = Path.Combine(
-				gameDir,
-				projectFile.GetFileNameWithoutAnyExtensions(),
-				ModDeployRoot
-			);
+			// Resolve the runtime Mods directory for either:
+			//   Steam/Epic:       <Root>/PAYDAY3/Mods
+			//   Microsoft Store:  <Root>/Content/PAYDAY3/Mods
+			var layout = RequirePAYDAY3GameLayout(gameDir);
+			var modsDir = layout.ModsDirectory;
 			var resultPluginDirectory = Path.Combine(modsDir, pluginName);
 
 			if (DirectoryExists(resultPluginDirectory))
@@ -3270,19 +3452,16 @@ namespace CrimeForge.Automation
 
 				if (!string.IsNullOrEmpty(gameDir))
 				{
-					var bootstrapExePath =
-						Path.Combine(
-							gameDir,
-							GameExecutableName
-						);
+					var gameLayout = RequirePAYDAY3GameLayout(gameDir);
+					gameDir = gameLayout.InstallDirectory;
 
-					if (!FileExists(bootstrapExePath))
-					{
-						throw new AutomationException(
-							"Provided -GameDir is invalid: expected '{0}'",
-							bootstrapExePath
-						);
-					}
+					LogInformation(
+						"Resolved PAYDAY 3 install: {0} ({1})",
+						gameDir,
+						gameLayout.IsMicrosoftStore
+							? "Microsoft Store/Xbox WinGDK"
+							: "Steam/Epic desktop"
+					);
 				}
 
 				var pd3Params = new PD3Params
