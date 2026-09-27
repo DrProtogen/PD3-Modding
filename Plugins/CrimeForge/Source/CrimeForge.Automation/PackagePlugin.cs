@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -33,6 +33,14 @@ namespace CrimeForge.Automation
 			new List<string>();
 		public List<string> ExpectedChunkPackages { get; } =
 			new List<string>();
+		public List<CrimeForgeAdditionalPakFile> AdditionalPakFiles { get; } =
+			new List<CrimeForgeAdditionalPakFile>();
+	}
+
+	internal sealed class CrimeForgeAdditionalPakFile
+	{
+		public string Source { get; set; } = "";
+		public string StagedPath { get; set; } = "";
 	}
 
 	/// <summary>
@@ -801,6 +809,36 @@ namespace CrimeForge.Automation
 					root,
 					"ExpectedChunkPackages"));
 
+			SystemJsonArray additionalPakFiles =
+				root["AdditionalPakFiles"] as SystemJsonArray;
+			if (additionalPakFiles != null)
+			{
+				foreach (SystemJsonNode node in additionalPakFiles)
+				{
+					SystemJsonObject file = node as SystemJsonObject;
+					if (file == null)
+					{
+						continue;
+					}
+
+					string source =
+						file["Source"]?.GetValue<string>() ?? "";
+					string stagedPath =
+						file["StagedPath"]?.GetValue<string>() ?? "";
+
+					if (!string.IsNullOrWhiteSpace(source) &&
+						!string.IsNullOrWhiteSpace(stagedPath))
+					{
+						result.AdditionalPakFiles.Add(
+							new CrimeForgeAdditionalPakFile
+							{
+								Source = source,
+								StagedPath = stagedPath
+							});
+					}
+				}
+			}
+
 			if (!result.PluginName.Equals(
 					pluginName,
 					StringComparison.OrdinalIgnoreCase))
@@ -903,6 +941,13 @@ namespace CrimeForge.Automation
 			 *
 			 * CookCommandlet accepts package names through -Map even when they are
 			 * not UWorld assets, so seed the full deterministic PAL package set.
+			 */
+			/*
+			 * Do not add -CookSinglePackage here. Wwise recognizes that flag and
+			 * starts its resource cooker, but UE then expands this surgical cook into
+			 * hundreds of startup/engine packages. CrimeForge packages the already
+			 * generated BNK/WEM files itself, so PASS 2 only needs the exact AkEvent
+			 * UObject plus the rest of the deterministic PAL package set.
 			 */
 			return " -cooksinglepackagenorefs -Map=" +
 				string.Join(
@@ -1387,7 +1432,12 @@ namespace CrimeForge.Automation
 				"-AllowUncookedAssetReferences "
 				+ "-ini:Editor:[CookSettings]:CookContentMissingSeverity=Warning "
 				+ "-ini:Engine:[Core.Log]:LogAkAudio=Fatal "
-				+ "-ini:Engine:[Core.Log]:LogAudiokineticTools=Fatal"
+				+ "-ini:Engine:[Core.Log]:LogAudiokineticTools=Fatal "
+				// PASS 2 deliberately does not start Wwise's platform resource cooker.
+				// Its generated BNK/WEM payload is staged into PASS 1 by CrimeForge.
+				// Wwise 2023.1 otherwise logs GetCookerForPlatform as Error while the
+				// AkAudioEvent package itself still completes its normal UE cook.
+				+ "-ini:Engine:[Core.Log]:LogWwiseResourceCooker=Fatal"
 				+ BuildExactPass2CookOptions(palManifest);
 
 			LogInformation(
@@ -1560,9 +1610,68 @@ namespace CrimeForge.Automation
 			}
 		}
 
-		public static void CopyBuildToStagingDirectory(
+		private static void StageAdditionalPakFiles(
+			DeploymentContext deploymentContext,
+			IEnumerable<CrimeForgeAdditionalPakFile> files)
+		{
+			if (files == null)
+			{
+				return;
+			}
+
+			var stagedPaths = new HashSet<string>(
+				StringComparer.OrdinalIgnoreCase);
+
+			foreach (CrimeForgeAdditionalPakFile file in files)
+			{
+				if (file == null ||
+					string.IsNullOrWhiteSpace(file.Source) ||
+					string.IsNullOrWhiteSpace(file.StagedPath))
+				{
+					continue;
+				}
+
+				string source = Path.GetFullPath(file.Source);
+				string stagedPath = file.StagedPath
+					.Replace('\\', '/')
+					.TrimStart('/');
+
+				if (Path.IsPathRooted(stagedPath) ||
+					stagedPath.Split('/').Any(part => part == ".."))
+				{
+					throw new AutomationException(
+						"CrimeForge refused invalid additional pak path: {0}",
+						file.StagedPath);
+				}
+
+				if (!FileExists(source))
+				{
+					throw new AutomationException(
+						"Wwise resource selected for packaging no longer exists: {0}",
+						source);
+				}
+
+				if (!stagedPaths.Add(stagedPath))
+				{
+					continue;
+				}
+
+				deploymentContext.StageFile(
+					StagedFileType.UFS,
+					new FileReference(source),
+					new StagedFileReference(stagedPath));
+
+				LogInformation(
+					"Wwise: staging into main mod pak: {0} -> {1}",
+					source,
+					stagedPath);
+			}
+		}
+
+		internal static void CopyBuildToStagingDirectory(
 			ProjectParams Params,
-			IReadOnlyList<DeploymentContext> deploymentContexts)
+			IReadOnlyList<DeploymentContext> deploymentContexts,
+			IEnumerable<CrimeForgeAdditionalPakFile> additionalPakFiles = null)
 		{
 			var platformCares =
 				Params.ClientTargetPlatformInstances[0].RequiresPak(Params);
@@ -1580,6 +1689,7 @@ namespace CrimeForge.Automation
 				foreach (var sc in deploymentContexts)
 				{
 					Project.CreateStagingManifest(Params, sc);
+					StageAdditionalPakFiles(sc, additionalPakFiles);
 					Project.CleanStagingDirectory(Params, sc);
 				}
 
@@ -2885,6 +2995,13 @@ namespace CrimeForge.Automation
 
 			try
 			{
+				CrimeForgePALPackagingManifest palManifest =
+					LoadPALPackagingManifest(
+						cmd,
+						pluginName,
+						chunkId
+					);
+
 				// ============================================================
 				// PASS 1
 				// ============================================================
@@ -2916,7 +3033,8 @@ namespace CrimeForge.Automation
 				result.SetPhase("PASS 1: Stage plugin DLC");
 				CopyBuildToStagingDirectory(
 					dlcParams,
-					dlcContexts
+					dlcContexts,
+					palManifest.AdditionalPakFiles
 				);
 
 				result.SetPhase("PASS 1: Preserve plugin shell");
@@ -2946,13 +3064,6 @@ namespace CrimeForge.Automation
 				);
 
 				result.SetPhase("PASS 2: Prepare PAL chunk cook");
-
-				CrimeForgePALPackagingManifest palManifest =
-					LoadPALPackagingManifest(
-						cmd,
-						pluginName,
-						chunkId
-					);
 
 				LogInformation(
 					"PASS 2 deterministic PAL input: {0} exact Chunk {1} package(s), "
