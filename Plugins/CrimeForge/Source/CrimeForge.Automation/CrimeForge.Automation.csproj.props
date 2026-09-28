@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-	<PropertyGroup>
-		<EngineDir Condition="'$(EngineDir)' == ''">G:\Program Files\Epic Games\UE5_PD3\Engine</EngineDir>
-	</PropertyGroup>
+  <PropertyGroup>
+    <!-- UAT supplies EngineDir. UE_ENGINE_DIR is only a portable fallback for manual/IDE builds. -->
+    <EngineDir Condition="'$(EngineDir)' == '' and '$(UE_ENGINE_DIR)' != ''">$(UE_ENGINE_DIR)</EngineDir>
+  </PropertyGroup>
 </Project>
