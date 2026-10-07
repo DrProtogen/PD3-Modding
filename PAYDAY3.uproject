@@ -18,14 +18,17 @@
 				"Editor"
 			]
 		},
-                {
-                        "Name": "Suzie",
-                        "Enabled": true
-                },
-                {
-                        "Name": "BinkMedia",
-                        "Enabled": true
-                }
-
+		{
+			"Name": "Suzie",
+			"Enabled": true
+		},
+		{
+			"Name": "BinkMedia",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
+		}
 	]
 }
