@@ -60,6 +60,7 @@ void FWwiseProjectDatabaseImpl::UpdateDataStructure(const FDirectoryPath* InUpda
 	{
 		FWriteScopeLock WLock(LockedDataStructure->Lock);
 		auto& DataStructure = LockedDataStructure.Get();
+		bIsDatabaseParsed = false; // A failed refresh must not advertise an old successful parse.
 
 		if (DisableDefaultPlatforms())
 		{

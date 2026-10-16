@@ -28,7 +28,7 @@ Copyright (c) 2025 Audiokinetic Inc.
 #include "AkInitBank.generated.h"
 
 
-UCLASS()
+UCLASS(meta=(PD3WwiseTypedCookedData="true"))
 class AKAUDIO_API UAkInitBank : public UAkAudioType
 {
 	GENERATED_BODY()
@@ -42,6 +42,7 @@ public:
 #endif
 
 	TArray<FWwiseLanguageCookedData> GetLanguages();
+	virtual AkUInt32 GetShortID() const override { return InitBankCookedData.SoundBankId; }
 
 public:
 	UAkInitBank():LoadedInitBank(nullptr){}

@@ -35,6 +35,8 @@ Copyright (c) 2025 Audiokinetic Inc.
 void UAkInitBank::CookAdditionalFilesOverride(const TCHAR* PackageFilename, const ITargetPlatform* TargetPlatform,
                                               TFunctionRef<void(const TCHAR* Filename, void* Data, int64 Size)> WriteAdditionalFile)
 {
+	if (CanPreservePD3WwiseData()) return;
+
 	auto* ResourceCooker = FWwiseResourceCooker::GetForPlatform(TargetPlatform);
 	if (!ResourceCooker)
 	{
@@ -46,6 +48,11 @@ void UAkInitBank::CookAdditionalFilesOverride(const TCHAR* PackageFilename, cons
 
 void UAkInitBank::BeginCacheForCookedPlatformData(const ITargetPlatform* TargetPlatform)
 {
+	if (CanPreservePD3WwiseData())
+	{
+		UObject::BeginCacheForCookedPlatformData(TargetPlatform);
+		return;
+	}
 	if (auto* AkSettings = GetDefault<UAkSettings>())
 	{
 		if (AkSettings->AreSoundBanksGenerated())
@@ -69,13 +76,24 @@ void UAkInitBank::Serialize(FArchive& Ar)
 
  #if !UE_SERVER
  #if WITH_EDITORONLY_DATA
+	if (SerializePD3WwiseData(Ar)) return;
  	if (Ar.IsCooking() && Ar.IsSaving() && !Ar.CookingTarget()->IsServerOnly())
 	{
 		FWwiseInitBankCookedData CookedDataToArchive;
 		if (auto* ResourceCooker = FWwiseResourceCooker::GetForArchive(Ar))
 		{
-			ResourceCooker->PrepareCookedData(CookedDataToArchive, FWwiseObjectInfo::DefaultInitBank);
+			if (!ResourceCooker->PrepareCookedData(CookedDataToArchive, FWwiseObjectInfo::DefaultInitBank))
+			{
+				ReportWwiseCookFailure(Ar);
+				return;
+			}
 		}
+		else
+		{
+			ReportWwiseCookFailure(Ar);
+			return;
+		}
+
 		CookedDataToArchive.Serialize(Ar);
 	}
  #else
@@ -126,6 +144,8 @@ void UAkInitBank::PreSave(FObjectPreSaveContext Context)
 		Super::PreSave(Context);
 	};
 #endif
+	if (CanPreservePD3WwiseData()) return;
+
 	if (!Context.IsCooking())
 	{
 		return;
@@ -155,6 +175,8 @@ void UAkInitBank::PreSave(FObjectPreSaveContext Context)
 #if WITH_EDITORONLY_DATA
 void UAkInitBank::PrepareCookedData()
 {
+	if (RestorePD3WwiseData()) return;
+
 	if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
 	{
 		return;

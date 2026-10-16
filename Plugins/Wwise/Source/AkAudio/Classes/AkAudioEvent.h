@@ -35,7 +35,7 @@ class UAkAudioBank;
 class UAkTrigger;
 
 
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta=(PD3WwiseTypedCookedData="true"))
 class AKAUDIO_API UAkAudioEvent : public UAkAudioType
 {
 	GENERATED_BODY()

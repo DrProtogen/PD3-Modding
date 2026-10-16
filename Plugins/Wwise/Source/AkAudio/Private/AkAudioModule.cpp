@@ -16,6 +16,7 @@ Copyright (c) 2025 Audiokinetic Inc.
 *******************************************************************************/
 
 #include "AkAudioModule.h"
+#include "PD3WwiseRetailResources.h"
 #include "AkAudioDevice.h"
 #include "AkAudioStyle.h"
 #include "AkSettings.h"
@@ -218,6 +219,11 @@ void FAkAudioModule::StartupModule()
 #endif
 	
 #if WITH_EDITORONLY_DATA
+	// PostLoad is allowed on the async loading thread. Load the cooker interface
+	// here on the game thread, before InitBank loads or database reload callbacks.
+	IWwiseResourceCookerModule::GetModule();
+	IWwiseProjectDatabaseModule::GetModule();
+	PD3WwiseRetailResources::Initialize();
 	if (auto* AkSettings = GetDefault<UAkSettings>())
 	{
 		if (AkSettings->AreSoundBanksGenerated())

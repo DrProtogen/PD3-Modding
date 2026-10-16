@@ -1,0 +1,13 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "f:\\paydaymods\\ue5\\projects\\personal\\pd3-modkit\\plugins\\crimeforge\\intermediate\\build\\win64\\unrealeditor\\inc\\crimeforge\\uht\\crimeforge.init.gen.cpp",
+        "ProvidedModule": "",
+        "PCH": "f:\\paydaymods\\ue5\\projects\\personal\\pd3-modkit\\intermediate\\build\\win64\\x64\\payday3editor\\development\\unrealed\\sharedpch.unrealed.project.valapi.cpp20.h.pch",
+        "Includes": [
+            "f:\\paydaymods\\ue5\\projects\\personal\\pd3-modkit\\plugins\\crimeforge\\intermediate\\build\\win64\\x64\\unrealeditor\\development\\crimeforge\\definitions.crimeforge.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}

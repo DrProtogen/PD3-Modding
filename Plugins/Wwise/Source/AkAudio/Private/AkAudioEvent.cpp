@@ -589,14 +589,25 @@ void UAkAudioEvent::Serialize(FArchive& Ar)
 
 #if !UE_SERVER
 #if WITH_EDITORONLY_DATA 
+	if (SerializePD3WwiseData(Ar)) return;
 	if (Ar.IsCooking() && Ar.IsSaving() && !Ar.CookingTarget()->IsServerOnly())
 	{
 		FWwiseLocalizedEventCookedData CookedDataToArchive;
 		if (auto* ResourceCooker = FWwiseResourceCooker::GetForArchive(Ar))
 		{
-			ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(EventInfo));
+			if (!ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(EventInfo)))
+			{
+				ReportWwiseCookFailure(Ar);
+				return;
+			}
 			FillMetadata(ResourceCooker->GetProjectDatabase());
 		}
+		else
+		{
+			ReportWwiseCookFailure(Ar);
+			return;
+		}
+
 		CookedDataToArchive.Serialize(Ar);
 		Ar << MaximumDuration;
 		Ar << MinimumDuration;
@@ -631,6 +642,8 @@ void UAkAudioEvent::PreSave(FObjectPreSaveContext Context)
 		Super::PreSave(Context);
 	};
 #endif
+	if (CanPreservePD3WwiseData()) return;
+
 	if (!Context.IsCooking())
 	{
 		return;
@@ -735,26 +748,29 @@ void UAkAudioEvent::LoadEventData()
 	UnloadEventData(false);
 	
 #if WITH_EDITORONLY_DATA
-	if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
+	if (!RestorePD3WwiseData())
 	{
-		return;
+		if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
+		{
+			return;
+		}
+		auto* ProjectDatabase = FWwiseProjectDatabase::Get();
+		if (!ProjectDatabase || !ProjectDatabase->IsProjectDatabaseParsed())
+		{
+			UE_LOG(LogAkAudio, VeryVerbose, TEXT("UAkAudioEvent::LoadEventData: Not loading '%s' because project database is not parsed."), *GetName())
+			return;
+		}
+		auto* ResourceCooker = FWwiseResourceCooker::GetDefault();
+		if (UNLIKELY(!ResourceCooker))
+		{
+			return;
+		}
+		if (UNLIKELY(!ResourceCooker->PrepareCookedData(EventCookedData, GetValidatedInfo(EventInfo))))
+		{
+			return;
+		}
+		FillMetadata(ResourceCooker->GetProjectDatabase());
 	}
-	auto* ProjectDatabase = FWwiseProjectDatabase::Get();
-	if (!ProjectDatabase || !ProjectDatabase->IsProjectDatabaseParsed())
-	{
-		UE_LOG(LogAkAudio, VeryVerbose, TEXT("UAkAudioEvent::LoadEventData: Not loading '%s' because project database is not parsed."), *GetName())
-		return;
-	}
-	auto* ResourceCooker = FWwiseResourceCooker::GetDefault();
-	if (UNLIKELY(!ResourceCooker))
-	{
-		return;
-	}
-	if (UNLIKELY(!ResourceCooker->PrepareCookedData(EventCookedData, GetValidatedInfo(EventInfo))))
-	{
-		return;
-	}
-	FillMetadata(ResourceCooker->GetProjectDatabase());
 #endif
 
 	UE_LOG(LogAkAudio, Verbose, TEXT("%s - LoadEventData"), *GetName());
@@ -903,6 +919,8 @@ TArray<FWwiseExternalSourceCookedData> UAkAudioEvent::GetAllExternalSources() co
 void UAkAudioEvent::CookAdditionalFilesOverride(const TCHAR* PackageFilename, const ITargetPlatform* TargetPlatform,
 	TFunctionRef<void(const TCHAR* Filename, void* Data, int64 Size)> WriteAdditionalFile)
 {
+	if (CanPreservePD3WwiseData()) return;
+
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
 		return;

@@ -2934,7 +2934,11 @@ void FWwiseResourceLoaderImpl::LoadSoundBankFile(const FWwiseSoundBankCookedData
 			return;
 		}
 	}
-	SoundBankManager->LoadSoundBank(InSoundBank, GetUnrealPath(), [&InSoundBank, InCallback = MoveTemp(InCallback)](bool bInResult)
+	SoundBankManager->LoadSoundBank(InSoundBank,
+#if WITH_EDITORONLY_DATA
+		InSoundBank.bPD3RetailResource ? InSoundBank.PD3RetailRootPath :
+#endif
+		GetUnrealPath(), [&InSoundBank, InCallback = MoveTemp(InCallback)](bool bInResult)
 	{
 		UE_LOG(LogWwiseResourceLoader, VeryVerbose, TEXT("[LoadSoundBankAsync: %" PRIu32 "] %s: Done."),
 			(uint32)InSoundBank.SoundBankId, *InSoundBank.DebugName.ToString());
@@ -2954,7 +2958,11 @@ void FWwiseResourceLoaderImpl::UnloadSoundBankFile(const FWwiseSoundBankCookedDa
 		InCallback();
 		return;
 	}
-	SoundBankManager->UnloadSoundBank(InSoundBank, GetUnrealPath(), [&InSoundBank, InCallback = MoveTemp(InCallback)]()
+	SoundBankManager->UnloadSoundBank(InSoundBank,
+#if WITH_EDITORONLY_DATA
+		InSoundBank.bPD3RetailResource ? InSoundBank.PD3RetailRootPath :
+#endif
+		GetUnrealPath(), [&InSoundBank, InCallback = MoveTemp(InCallback)]()
 	{
 		UE_LOG(LogWwiseResourceLoader, VeryVerbose, TEXT("[UnloadSoundBankAsync: %" PRIu32 "] %s: Done."),
 			(uint32)InSoundBank.SoundBankId, *InSoundBank.DebugName.ToString());
@@ -2979,7 +2987,11 @@ void FWwiseResourceLoaderImpl::LoadMediaFile(const FWwiseMediaCookedData& InMedi
 		}
 	}
 
-	MediaManager->LoadMedia(InMedia, GetUnrealPath(), [&InMedia, InCallback = MoveTemp(InCallback)](bool bInResult)
+	MediaManager->LoadMedia(InMedia,
+#if WITH_EDITORONLY_DATA
+		InMedia.bPD3RetailResource ? InMedia.PD3RetailRootPath :
+#endif
+		GetUnrealPath(), [&InMedia, InCallback = MoveTemp(InCallback)](bool bInResult)
 	{
 		UE_LOG(LogWwiseResourceLoader, VeryVerbose, TEXT("[LoadMediaAsync: %" PRIu32 "] %s: Done."),
 			(uint32)InMedia.MediaId, *InMedia.DebugName.ToString());
@@ -3001,7 +3013,11 @@ void FWwiseResourceLoaderImpl::UnloadMediaFile(const FWwiseMediaCookedData& InMe
 		return;
 	}
 
-	MediaManager->UnloadMedia(InMedia, GetUnrealPath(), [&InMedia, InCallback = MoveTemp(InCallback)]()
+	MediaManager->UnloadMedia(InMedia,
+#if WITH_EDITORONLY_DATA
+		InMedia.bPD3RetailResource ? InMedia.PD3RetailRootPath :
+#endif
+		GetUnrealPath(), [&InMedia, InCallback = MoveTemp(InCallback)]()
 	{
 		UE_LOG(LogWwiseResourceLoader, VeryVerbose, TEXT("[UnloadMediaAsync: %" PRIu32 "] %s: Done."),
 			(uint32)InMedia.MediaId, *InMedia.DebugName.ToString());

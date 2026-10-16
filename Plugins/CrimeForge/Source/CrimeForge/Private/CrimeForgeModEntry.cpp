@@ -1,4 +1,5 @@
 #include "CrimeForgeModEntry.h"
+#include "CrimeForgePALCommandlet.h"
 #include "CrimeForge.h"
 #include "CrimeForgeSettings.h"
 #include "CrimeForgeStyle.h"
@@ -2049,7 +2050,7 @@ namespace
 		return Root;
 	}
 
-	void GatherWwisePakFiles(
+	bool GatherWwisePakFiles(
 		const TArray<FString>& ExplicitPALAssets,
 		TArray<FCrimeForgeAdditionalPakFile>& OutFiles)
 	{
@@ -2063,6 +2064,22 @@ namespace
 		 */
 		for (const FString& ObjectPath : ExplicitPALAssets)
 		{
+			// Loading is necessary: cooked retail registry tags omit editor Wwise identity.
+			// Ask the integration whether its decoded snapshot remains valid before
+			// staging a same-ID bank from a possibly unrelated authoring project.
+			if (UObject* Asset = UEditorAssetLibrary::LoadAsset(ObjectPath))
+			{
+				if (UFunction* Query = Asset->FindFunction(TEXT("CanPreservePD3WwiseData")))
+				{
+					struct { bool ReturnValue = false; } Result;
+					Asset->ProcessEvent(Query, &Result);
+					if (Result.ReturnValue)
+					{
+						UE_LOG(LogCrimeForge, Display, TEXT("Wwise retail replacement %s: preserving decoded dependencies in the installed game."), *ObjectPath);
+						continue;
+					}
+				}
+			}
 			uint32 ShortId = 0;
 			if (TryGetWwiseEventShortId(ObjectPath, ShortId))
 			{
@@ -2078,7 +2095,7 @@ namespace
 
 		if (EventIds.IsEmpty())
 		{
-			return;
+			return true;
 		}
 
 		const FString RootOutput = GetConfiguredWwiseRootOutputPath();
@@ -2087,12 +2104,12 @@ namespace
 		{
 			UE_LOG(
 				LogCrimeForge,
-				Warning,
+				Error,
 				TEXT(
 					"PAL explicitly references %d Wwise event(s), but no usable "
-					"Wwise Root Output Path is configured. Skipping BNK/WEM packaging."),
+					"Wwise Root Output Path is configured. Generate Windows SoundBanks with JSON metadata before packaging."),
 				EventIds.Num());
-			return;
+			return false;
 		}
 
 		const FString PlatformRoot =
@@ -2101,13 +2118,13 @@ namespace
 		{
 			UE_LOG(
 				LogCrimeForge,
-				Warning,
+				Error,
 				TEXT(
 					"PAL explicitly references %d Wwise event(s), but the generated "
 					"Windows SoundBank directory does not exist: %s"),
 				EventIds.Num(),
 				*PlatformRoot);
-			return;
+			return false;
 		}
 
 		/*
@@ -2134,16 +2151,17 @@ namespace
 		{
 			UE_LOG(
 				LogCrimeForge,
-				Warning,
+				Error,
 				TEXT(
 					"PAL explicitly references %d Wwise event(s), but no generated "
 					"Wwise JSON metadata was found under %s. Generate Windows "
 					"SoundBanks with JSON metadata before packaging."),
 				EventIds.Num(),
 				*PlatformRoot);
-			return;
+			return false;
 		}
 
+		bool bResourcesValid = true;
 		TSet<FString> AddedStagedPaths;
 		TSet<uint32> MatchedEventIds;
 
@@ -2170,9 +2188,10 @@ namespace
 			{
 				UE_LOG(
 					LogCrimeForge,
-					Warning,
+					Error,
 					TEXT("Wwise generated resource is missing: %s"),
 					*Source);
+				bResourcesValid = false;
 				return;
 			}
 
@@ -2330,7 +2349,7 @@ namespace
 			{
 				UE_LOG(
 					LogCrimeForge,
-					Warning,
+					Error,
 					TEXT(
 						"Wwise Event ShortId %u is explicitly included in the PAL, "
 						"but no matching generated bank metadata was found under %s."),
@@ -2348,6 +2367,7 @@ namespace
 			MatchedEventIds.Num(),
 			EventIds.Num(),
 			OutFiles.Num());
+		return bResourcesValid && MatchedEventIds.Num() == EventIds.Num();
 	}
 
 	bool WritePALPackagingManifest(
@@ -2424,9 +2444,9 @@ namespace
 		}
 
 		TArray<FCrimeForgeAdditionalPakFile> AdditionalPakFiles;
-		GatherWwisePakFiles(
+		if (!GatherWwisePakFiles(
 			ExplicitWwiseCandidates,
-			AdditionalPakFiles);
+			AdditionalPakFiles)) return false;
 
 		if (ExternalCookPackages.Num() == 0)
 		{
@@ -5150,3 +5170,31 @@ void SCrimeForgeModEntry::OnEnableCheckboxChanged(ECheckBoxState NewState) {
 }
 
 #undef LOCTEXT_NAMESPACE
+
+UCrimeForgePALCommandlet::UCrimeForgePALCommandlet()
+{
+	IsClient = false;
+	IsEditor = true;
+	IsServer = false;
+	LogToConsole = true;
+}
+
+int32 UCrimeForgePALCommandlet::Main(const FString& Params)
+{
+	FString PluginName, Output;
+	int32 ChunkId = INDEX_NONE;
+	if (!FParse::Value(*Params, TEXT("PluginName="), PluginName)
+		|| !FParse::Value(*Params, TEXT("Output="), Output)
+		|| !FParse::Value(*Params, TEXT("ChunkId="), ChunkId))
+	{
+		UE_LOG(LogCrimeForge, Error, TEXT("Usage: -run=CrimeForgePAL -PluginName=<mod> -ChunkId=<id> -Output=<manifest.json>"));
+		return 1;
+	}
+	const auto Plugin = IPluginManager::Get().FindPlugin(PluginName);
+	if (!Plugin)
+	{
+		UE_LOG(LogCrimeForge, Error, TEXT("CrimeForge PAL validation: Plugin %s was not discovered."), *PluginName);
+		return 1;
+	}
+	return WritePALPackagingManifest(*Plugin, ChunkId, Output) ? 0 : 1;
+}

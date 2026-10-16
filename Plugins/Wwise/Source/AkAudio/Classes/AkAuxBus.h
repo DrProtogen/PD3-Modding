@@ -29,7 +29,7 @@ Copyright (c) 2025 Audiokinetic Inc.
 
 class UAkAudioBank;
 
-UCLASS(hidecategories=(Advanced, Attachment, Volume), BlueprintType)
+UCLASS(hidecategories=(Advanced, Attachment, Volume), BlueprintType, meta=(PD3WwiseTypedCookedData="true"))
 class AKAUDIO_API UAkAuxBus : public UAkAudioType
 {
 	GENERATED_BODY()

@@ -38,24 +38,27 @@ void UAkStateValue::LoadGroupValue()
 	UnloadGroupValue(false);
 
 #if WITH_EDITORONLY_DATA
-	if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
+	if (!RestorePD3WwiseData())
 	{
-		return;
-	}
-	auto* ProjectDatabase = FWwiseProjectDatabase::Get();
-	if (!ProjectDatabase || !ProjectDatabase->IsProjectDatabaseParsed())
-	{
-		UE_LOG(LogAkAudio, VeryVerbose, TEXT("UAkStateValue::LoadGroupValue: Not loading '%s' because project database is not parsed."), *GetName())
-		return;
-	}
-	auto* ResourceCooker = FWwiseResourceCooker::GetDefault();
-	if (UNLIKELY(!ResourceCooker))
-	{
-		return;
-	}
-	if (UNLIKELY(!ResourceCooker->PrepareCookedData(GroupValueCookedData, GetValidatedInfo(GroupValueInfo), EWwiseGroupType::State)))
-	{
-		return;
+		if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
+		{
+			return;
+		}
+		auto* ProjectDatabase = FWwiseProjectDatabase::Get();
+		if (!ProjectDatabase || !ProjectDatabase->IsProjectDatabaseParsed())
+		{
+			UE_LOG(LogAkAudio, VeryVerbose, TEXT("UAkStateValue::LoadGroupValue: Not loading '%s' because project database is not parsed."), *GetName())
+			return;
+		}
+		auto* ResourceCooker = FWwiseResourceCooker::GetDefault();
+		if (UNLIKELY(!ResourceCooker))
+		{
+			return;
+		}
+		if (UNLIKELY(!ResourceCooker->PrepareCookedData(GroupValueCookedData, GetValidatedInfo(GroupValueInfo), EWwiseGroupType::State)))
+		{
+			return;
+		}
 	}
 #endif
 	
@@ -77,13 +80,24 @@ void UAkStateValue::Serialize(FArchive& Ar)
 	}
 #if !UE_SERVER
 #if WITH_EDITORONLY_DATA
+	if (SerializePD3WwiseData(Ar)) return;
  	if (Ar.IsCooking() && Ar.IsSaving() && !Ar.CookingTarget()->IsServerOnly())
 	{
 		FWwiseGroupValueCookedData CookedDataToArchive;
 		if (auto* ResourceCooker = FWwiseResourceCooker::GetForArchive(Ar))
 		{
-			ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(GroupValueInfo), EWwiseGroupType::State);
+			if (!ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(GroupValueInfo), EWwiseGroupType::State))
+			{
+				ReportWwiseCookFailure(Ar);
+				return;
+			}
 		}
+		else
+		{
+			ReportWwiseCookFailure(Ar);
+			return;
+		}
+
 		CookedDataToArchive.Serialize(Ar);
 	}
 #else

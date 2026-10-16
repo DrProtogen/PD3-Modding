@@ -203,7 +203,7 @@ void UAkAudioType::ValidateShortID(FWwiseObjectInfo& WwiseInfo) const
 {
 	if (WwiseInfo.WwiseShortId == AK_INVALID_UNIQUE_ID)
 	{
-		if (!WwiseInfo.WwiseName.ToString().IsEmpty())
+		if (!WwiseInfo.WwiseName.IsNone())
 		{
 			WwiseInfo.WwiseShortId = FAkAudioDevice::GetShortIDFromString(WwiseInfo.WwiseName.ToString());
 		}
@@ -224,13 +224,16 @@ void UAkAudioType::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 
 	if (PropertyChangedEvent.ChangeType == EPropertyChangeType::ValueSet)
 	{
+		bool bIdentityChanged = false;
 		if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(FWwiseObjectInfo, WwiseName))
 		{
+			bIdentityChanged = true;
 			AudioTypeInfo->WwiseGuid = {};
 			AudioTypeInfo->WwiseShortId = 0;
 		}
 		else if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(FWwiseEventInfo, WwiseShortId))
 		{
+			bIdentityChanged = true;
 			AudioTypeInfo->WwiseGuid= {};
 			AudioTypeInfo->WwiseName = "";
 		}
@@ -239,6 +242,7 @@ void UAkAudioType::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 		else if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(FWwiseEventInfo, WwiseGuid) ||
 			PropertyChangedEvent.Property->Owner.GetFName() == "Guid")
 		{
+			bIdentityChanged = true;
 			AudioTypeInfo->WwiseName = "";
 			AudioTypeInfo->WwiseShortId = {};
 		}
@@ -250,7 +254,10 @@ void UAkAudioType::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 			}
 			// Else not necessary, we will load the data just before exiting the function
 		}
-		FillInfo();
+		if (bIdentityChanged || !CanPreservePD3WwiseData())
+		{
+			FillInfo();
+		}
 	}
 
 	if (bAutoLoad)
@@ -299,6 +306,11 @@ void UAkAudioType::HashDependenciesForCook(FCbFieldViewIterator Args, UE::Cook::
 
 void UAkAudioType::BeginCacheForCookedPlatformData(const ITargetPlatform* TargetPlatform)
 {
+	if (CanPreservePD3WwiseData())
+	{
+		UObject::BeginCacheForCookedPlatformData(TargetPlatform);
+		return;
+	}
 	if (auto* AkSettings = GetDefault<UAkSettings>())
 	{
 		if (AkSettings->AreSoundBanksGenerated())

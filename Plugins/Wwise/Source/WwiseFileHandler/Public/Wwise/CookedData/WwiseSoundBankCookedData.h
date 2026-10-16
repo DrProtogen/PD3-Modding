@@ -91,6 +91,10 @@ struct WWISEFILEHANDLER_API FWwiseSoundBankCookedData
 	 * @brief Path name in the source Generated SoundBanks folder.
 	*/
 	FString SourcePathName;
+
+	// Session-only origin, assigned after decoding retail data. Never serialized.
+	bool bPD3RetailResource = false;
+	FString PD3RetailRootPath;
 #endif
 
 	FWwiseSoundBankCookedData();

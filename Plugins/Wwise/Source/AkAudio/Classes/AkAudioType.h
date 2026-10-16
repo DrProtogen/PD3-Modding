@@ -23,6 +23,7 @@ Copyright (c) 2025 Audiokinetic Inc.
 #include "Wwise/Info/WwiseObjectInfo.h"
 #include "Wwise/WwiseResourceLoaderFuture.h"
 #include "WwiseUnrealDefines.h"
+#include "PD3WwiseRetailData.h"
 #if WITH_EDITORONLY_DATA && UE_5_5_OR_LATER
 #include "Cooker/CookDependency.h"
 #include "Serialization/CompactBinary.h"
@@ -66,6 +67,10 @@ public:
 	virtual bool IsReadyForFinishDestroy() override;
 	virtual void FinishDestroy() override;
 
+	/** Packaging tools query this without depending on AkAudio's editor internals. */
+	UFUNCTION()
+	bool CanPreservePD3WwiseData() const;
+
 	UFUNCTION(BlueprintCallable, Category = "Audiokinetic|AkAudioType")
 	virtual void LoadData()   {}
 
@@ -96,6 +101,22 @@ public:
 	}
 	
 #if WITH_EDITORONLY_DATA
+	// The original native cooked payload has no editor identity/GUID metadata.
+	// Keep a typed copy across cooked-to-editor conversion, duplication and saving.
+	UPROPERTY()
+	FPD3WwiseRetailData PD3RetailData;
+
+	/** Use this after authoring replacement banks, including when the event keeps its retail ID. */
+	UPROPERTY(EditAnywhere, Category = "PAYDAY 3|Wwise", meta = (DisplayName = "Regenerate From Wwise Project"))
+	bool bPD3RegenerateFromProject = false;
+
+	bool SerializePD3WwiseData(FArchive& Ar);
+	bool RestorePD3WwiseData();
+	bool ValidatePD3WwiseResources() const;
+	FString GetPD3WwiseIdentity() const;
+	bool IsPD3WwiseRetailAsset() const { return !PD3RetailData.SourceObjectPath.IsEmpty(); }
+	void ReportWwiseCookFailure(FArchive& Ar) const;
+
 	virtual FWwiseObjectInfo* GetInfoMutable();
 	virtual FWwiseObjectInfo GetInfo() const {return {};}
 	virtual FGuid GetWwiseGuid() const { return GetInfo().WwiseGuid; }

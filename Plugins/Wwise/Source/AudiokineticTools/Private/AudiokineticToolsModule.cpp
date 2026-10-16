@@ -924,6 +924,10 @@ TMap<FString, SettingsRegistrationStruct>& FAudiokineticToolsModule::GetWwisePla
 
 void FAudiokineticToolsModule::RegisterSettings()
 {
+	// Project Settings panels have no consumer in a commandlet. Registering them
+	// here queries authoring platforms even for metadata-free retail inspection/cooks.
+	if (IsRunningCommandlet()) return;
+
 	if (auto SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
 	{
 		auto UpdatePlatformSettings = [SettingsModule, this]
@@ -967,6 +971,7 @@ void FAudiokineticToolsModule::RegisterSettings()
 
 void FAudiokineticToolsModule::UnregisterSettings()
 {
+	if (RegisteredSettingsNames.IsEmpty()) return;
 	if (auto SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
 	{
 		auto SettingsRegistrationMap = GetWwisePlatformNameToSettingsRegistrationMap();

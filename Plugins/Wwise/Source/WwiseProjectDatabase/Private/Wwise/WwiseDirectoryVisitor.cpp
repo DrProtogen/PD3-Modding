@@ -181,7 +181,9 @@ bool FWwiseDirectoryVisitor::Visit(const TCHAR* FilenameOrDirectory, bool bIsDir
 				CurrentPlatform.PlatformGuid = Platform.GUID;
 				CurrentPlatform.PlatformName = Platform.Name;
 				FString RelativePlatformPath(RequestedPlatformPath);
-				FPaths::MakePathRelativeTo(RelativePlatformPath, *WwiseUnrealHelper::GetSoundBankDirectory());
+				// Resolve relative to the ProjectInfo being parsed, including platform overrides.
+				const FString GeneratedRoot = FPaths::ConvertRelativePathToFull(Path) / TEXT("");
+				FPaths::MakePathRelativeTo(RelativePlatformPath, *GeneratedRoot);
 				CurrentPlatform.PathRelativeToGeneratedSoundBanks = FName(RelativePlatformPath);
 				FWwiseSharedPlatformId PlatformRef;
 				PlatformRef.Platform = MakeShared<FWwisePlatformId, ESPMode::ThreadSafe>(CurrentPlatform);

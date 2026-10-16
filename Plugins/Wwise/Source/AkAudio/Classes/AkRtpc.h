@@ -24,7 +24,7 @@ Copyright (c) 2025 Audiokinetic Inc.
 #endif
 #include "AkRtpc.generated.h"
 
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta=(PD3WwiseTypedCookedData="true"))
 class AKAUDIO_API UAkRtpc : public UAkAudioType
 {
 	GENERATED_BODY()

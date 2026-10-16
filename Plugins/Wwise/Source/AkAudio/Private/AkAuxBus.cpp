@@ -42,14 +42,25 @@ void UAkAuxBus::Serialize(FArchive& Ar)
 	}
 #if !UE_SERVER
 #if WITH_EDITORONLY_DATA
+	if (SerializePD3WwiseData(Ar)) return;
 	if (Ar.IsCooking() && Ar.IsSaving() && !Ar.CookingTarget()->IsServerOnly())
 	{
 		FWwiseLocalizedAuxBusCookedData CookedDataToArchive;
 		if (auto* ResourceCooker = FWwiseResourceCooker::GetForArchive(Ar))
 		{
-			ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(AuxBusInfo));
+			if (!ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(AuxBusInfo)))
+			{
+				ReportWwiseCookFailure(Ar);
+				return;
+			}
 			FillMetadata(ResourceCooker->GetProjectDatabase());
 		}
+		else
+		{
+			ReportWwiseCookFailure(Ar);
+			return;
+		}
+
 		CookedDataToArchive.Serialize(Ar);
 		Ar << MaxAttenuationRadius;
 	}
@@ -73,26 +84,29 @@ void UAkAuxBus::LoadAuxBus()
 	UnloadAuxBus(false);
 
 #if WITH_EDITORONLY_DATA
-	if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
+	if (!RestorePD3WwiseData())
 	{
-		return;
+		if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
+		{
+			return;
+		}
+		auto* ProjectDatabase = FWwiseProjectDatabase::Get();
+		if (!ProjectDatabase || !ProjectDatabase->IsProjectDatabaseParsed())
+		{
+			UE_LOG(LogAkAudio, VeryVerbose, TEXT("UAkAuxBus::LoadAuxBus: Not loading '%s' because project database is not parsed."), *GetName())
+			return;
+		}
+		auto* ResourceCooker = FWwiseResourceCooker::GetDefault();
+		if (UNLIKELY(!ResourceCooker))
+		{
+			return;
+		}
+		if (UNLIKELY(!ResourceCooker->PrepareCookedData(AuxBusCookedData, GetValidatedInfo(AuxBusInfo))))
+		{
+			return;
+		}
+		FillMetadata(ResourceCooker->GetProjectDatabase());
 	}
-	auto* ProjectDatabase = FWwiseProjectDatabase::Get();
-	if (!ProjectDatabase || !ProjectDatabase->IsProjectDatabaseParsed())
-	{
-		UE_LOG(LogAkAudio, VeryVerbose, TEXT("UAkAuxBus::LoadAuxBus: Not loading '%s' because project database is not parsed."), *GetName())
-		return;
-	}
-	auto* ResourceCooker = FWwiseResourceCooker::GetDefault();
-	if (UNLIKELY(!ResourceCooker))
-	{
-		return;
-	}
-	if (UNLIKELY(!ResourceCooker->PrepareCookedData(AuxBusCookedData, GetValidatedInfo(AuxBusInfo))))
-	{
-		return;
-	}
-	FillMetadata(ResourceCooker->GetProjectDatabase());
 #endif
 
 	const auto NewlyLoadedAuxBus = ResourceLoader->LoadAuxBus(AuxBusCookedData);
@@ -131,6 +145,8 @@ void UAkAuxBus::UnloadAuxBus(bool bAsync)
 void UAkAuxBus::CookAdditionalFilesOverride(const TCHAR* PackageFilename, const ITargetPlatform* TargetPlatform,
 	TFunctionRef<void(const TCHAR* Filename, void* Data, int64 Size)> WriteAdditionalFile)
 {
+	if (CanPreservePD3WwiseData()) return;
+
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
 		return;
@@ -208,6 +224,8 @@ void UAkAuxBus::PreSave(FObjectPreSaveContext Context)
 		Super::PreSave(Context);
 	};
 #endif
+	if (CanPreservePD3WwiseData()) return;
+
 	if (!Context.IsCooking())
 	{
 		return;

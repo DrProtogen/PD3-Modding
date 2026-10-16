@@ -91,6 +91,7 @@ public class AkAudio : ModuleRules
 				new string[]
 				{
 					"DesktopPlatform",
+					"PakFile",
 #if UE_5_0_OR_LATER
 					"DeveloperToolSettings",
 #endif

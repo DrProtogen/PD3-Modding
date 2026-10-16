@@ -75,7 +75,7 @@ FWwiseResourceCooker* FWwiseResourceCookerModule::CreateCookerForPlatform(const 
 		if (UNLIKELY(!CookingPlatform))
 		{
 #if UE_5_0_OR_LATER
-			if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase() && !FParse::Param(FCommandLine::Get(), TEXT("CookOnTheFly")) && !FParse::Param(FCommandLine::Get(), TEXT("CookSinglePackage")))		// By The Book cooking needs to predefine the requested platforms. InEditor and OnTheFly should create them all the time.
+			if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase() && !FParse::Param(FCommandLine::Get(), TEXT("CookOnTheFly")) && !FParse::Param(FCommandLine::Get(), TEXT("CookSinglePackage")) && !FParse::Param(FCommandLine::Get(), TEXT("CookSinglePackageNoRefs")))		// By The Book cooking needs to predefine the requested platforms. InEditor and OnTheFly should create them all the time.
 			{
 				UE_LOG(LogWwiseResourceCooker, Warning, TEXT("CreateCookerForPlatform: Not cooking for platform %s (UE: %s, Wwise: %s)"),
 					TargetPlatform ? *TargetPlatform->PlatformName() : TEXT("[nullptr]"),
@@ -122,7 +122,7 @@ FWwiseResourceCooker* FWwiseResourceCookerModule::CreateCookerForPlatform(const 
 	}
 
 	auto* DefaultResourceLoaderImpl = DefaultResourceLoader->ResourceLoaderImpl.Get();
-	if (UNLIKELY(!DefaultResourceLoader))
+	if (UNLIKELY(!DefaultResourceLoaderImpl))
 	{
 		UE_LOG(LogWwiseResourceCooker, Warning, TEXT("CreateCookerForPlatform: No ResourceLoaderImpl available creating platform %s (UE: %s, Wwise: %s)"),
 			TargetPlatform ? *TargetPlatform->PlatformName() : TEXT("[nullptr]"),
@@ -176,6 +176,12 @@ FWwiseResourceCooker* FWwiseResourceCookerModule::CreateCookerForPlatform(const 
 	}
 	NewProjectDatabase->PrepareProjectDatabaseForPlatform(MoveTemp(NewResourceLoader));
 	NewProjectDatabase->UpdateDataStructure(nullptr, nullptr);
+	if (!NewProjectDatabase->IsProjectDatabaseParsed())
+	{
+		UE_LOG(LogWwiseResourceCooker, Error, TEXT("CreateCookerForPlatform: Invalid generated metadata for %s. Check the root ProjectInfo.json and platform PlatformInfo.json, PluginInfo.json and bank JSON files."), *InPlatform.GetPlatformName().ToString());
+		delete NewProjectDatabase;
+		return nullptr;
+	}
 
 	auto* NewResourceCooker = FWwiseResourceCooker::Instantiate();
 	if (UNLIKELY(!NewResourceCooker))

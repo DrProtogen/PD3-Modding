@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CrimeForge.Automation")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Development")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+14f12ec948cc771be4b90467c7f91c7a60af2217")]
 [assembly: System.Reflection.AssemblyProductAttribute("CrimeForge.Automation")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CrimeForge.Automation")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

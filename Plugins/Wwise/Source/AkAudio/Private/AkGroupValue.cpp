@@ -90,7 +90,7 @@ void UAkGroupValue::ValidateShortID(FWwiseObjectInfo& WwiseInfo) const
 
 	if (WwiseInfo.WwiseShortId == AK_INVALID_UNIQUE_ID)
 	{
-		if (!WwiseInfo.WwiseName.ToString().IsEmpty())
+		if (!WwiseInfo.WwiseName.IsNone())
 		{
 			WwiseInfo.WwiseShortId = FAkAudioDevice::GetShortIDFromString(WwiseInfo.WwiseName.ToString());
 		}
@@ -166,6 +166,8 @@ void UAkGroupValue::PreSave(FObjectPreSaveContext Context)
 		Super::PreSave(Context);
 	};
 #endif
+	if (CanPreservePD3WwiseData()) return;
+
 	if (!Context.IsCooking())
 	{
 		return;

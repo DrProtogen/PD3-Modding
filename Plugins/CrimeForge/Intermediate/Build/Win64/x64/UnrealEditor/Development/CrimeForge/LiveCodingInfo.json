@@ -2,13 +2,9 @@
 	"RemapUnityFiles": 
 	{
 		"Module.CrimeForge.cpp.obj": [
-			"CrimeForge.init.gen.cpp.obj",
-			"CrimeForgeSettings.gen.cpp.obj",
-			"ModMetadataObject.gen.cpp.obj",
 			"PerModuleInline.gen.cpp.obj",
 			"CrimeForge.cpp.obj",
 			"CrimeForgeCommands.cpp.obj",
-			"CrimeForgeModEntry.cpp.obj",
 			"CrimeForgeModEntryList.cpp.obj",
 			"CrimeForgeSettings.cpp.obj",
 			"CrimeForgeStyle.cpp.obj",
@@ -17,7 +13,12 @@
 			"ModMetadataObject.cpp.obj",
 			"ModWizardDefinition.cpp.obj",
 			"PD3ModkitUpdater.cpp.obj",
-			"SExternalImage.cpp.obj"
+			"SExternalImage.cpp.obj",
+			"CrimeForge.init.gen.cpp.obj",
+			"CrimeForgePALCommandlet.gen.cpp.obj",
+			"CrimeForgeSettings.gen.cpp.obj",
+			"ModMetadataObject.gen.cpp.obj",
+			"CrimeForgeModEntry.cpp.obj"
 		]
 	}
 }

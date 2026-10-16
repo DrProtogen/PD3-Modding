@@ -65,6 +65,8 @@ public class AudiokineticTools : ModuleRules
 				"EditorStyle",
 				"InputCore",
 				"Json",
+				"JsonUtilities",
+				"WwiseResourceCooker",
 				"LevelEditor",
 				"MovieScene",
 				"MovieSceneTools",

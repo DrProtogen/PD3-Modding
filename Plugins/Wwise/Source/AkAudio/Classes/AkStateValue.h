@@ -20,7 +20,7 @@ Copyright (c) 2025 Audiokinetic Inc.
 #include "AkGroupValue.h"
 #include "AkStateValue.generated.h"
 
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta=(PD3WwiseTypedCookedData="true"))
 class AKAUDIO_API UAkStateValue : public UAkGroupValue
 {
 	GENERATED_BODY()

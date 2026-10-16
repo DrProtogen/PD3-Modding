@@ -38,13 +38,24 @@ void UAkRtpc::Serialize(FArchive& Ar)
 	}
 #if !UE_SERVER
 #if WITH_EDITORONLY_DATA
+	if (SerializePD3WwiseData(Ar)) return;
  	if (Ar.IsCooking() && Ar.IsSaving() && !Ar.CookingTarget()->IsServerOnly())
 	{
 		FWwiseGameParameterCookedData CookedDataToArchive;
 		if (auto* ResourceCooker = FWwiseResourceCooker::GetForArchive(Ar))
 		{
-			ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(RtpcInfo));
+			if (!ResourceCooker->PrepareCookedData(CookedDataToArchive, GetValidatedInfo(RtpcInfo)))
+			{
+				ReportWwiseCookFailure(Ar);
+				return;
+			}
 		}
+		else
+		{
+			ReportWwiseCookFailure(Ar);
+			return;
+		}
+
 		CookedDataToArchive.Serialize(Ar);
 	}
 #else
@@ -56,6 +67,7 @@ void UAkRtpc::Serialize(FArchive& Ar)
 #if WITH_EDITORONLY_DATA
 void UAkRtpc::GetGameParameterCookedData()
 {
+	if (RestorePD3WwiseData()) return;
 	SCOPED_AKAUDIO_EVENT_2(TEXT("GetGameParameterCookedData"));
 	if (!IWwiseProjectDatabaseModule::ShouldInitializeProjectDatabase())
 	{
@@ -147,6 +159,8 @@ void UAkRtpc::PreSave(FObjectPreSaveContext Context)
 		Super::PreSave(Context);
 	};
 #endif
+	if (CanPreservePD3WwiseData()) return;
+
 	if (!Context.IsCooking())
 	{
 		return;

@@ -14,11 +14,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3 Source\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
+      "projectUniqueName": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PD3-Modkit\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
       "projectName": "CrimeForge.Automation",
-      "projectPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3 Source\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
+      "projectPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PD3-Modkit\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\CrimeForge.Automation.csproj",
       "packagesPath": "C:\\Users\\Nwali\\.nuget\\packages\\",
-      "outputPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PAYDAY3 Source\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\obj\\",
+      "outputPath": "F:\\PAYDAYMODS\\UE5\\Projects\\Personal\\PD3-Modkit\\Plugins\\CrimeForge\\Source\\CrimeForge.Automation\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -37,6 +37,7 @@
       },
       "frameworks": {
         "net8.0": {
+          "framework": "net8.0",
           "targetAlias": "net8.0",
           "projectReferences": {}
         }
@@ -50,10 +51,12 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      }
+      },
+      "SdkAnalysisLevel": "9.0.300"
     },
     "frameworks": {
       "net8.0": {
+        "framework": "net8.0",
         "targetAlias": "net8.0",
         "imports": [
           "net461",
@@ -71,7 +74,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "E:\\EpicGames\\UnrealEngine-PD3Compatibility\\Engine\\Binaries\\ThirdParty\\DotNet\\8.0.300\\win-x64\\sdk\\8.0.300/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.315/PortableRuntimeIdentifierGraph.json"
       }
     }
   }
