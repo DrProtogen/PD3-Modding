@@ -1,0 +1,48 @@
+{
+    "FileVersion": 3,
+    "Version": 3,
+    "VersionName": "1.0.0",
+    "FriendlyName": "CrimeFactory",
+    "Description": "A PAYDAY 3 modding toolkit for creating, managing, validating, packaging, and deploying mods.",
+    "Category": "Modding",
+    "CreatedBy": "Nadz",
+    "CreatedByURL": "",
+    "DocsURL": "",
+    "MarketplaceURL": "",
+    "SupportURL": "",
+    "EnabledByDefault": true,
+    "CanContainContent": false,
+    "IsBetaVersion": false,
+    "IsExperimentalVersion": false,
+    "Installed": false,
+    "Modules": [
+        {
+            "Name": "CrimeFactory",
+            "Type": "Editor",
+            "LoadingPhase": "Default"
+        }
+    ],
+    "Plugins": [
+        {
+            "Name": "PluginBrowser",
+            "Enabled": true
+        },
+        {
+            "Name": "PluginUtils",
+            "Enabled": true
+        },
+        {
+            "Name": "EditorScriptingUtilities",
+            "Enabled": true
+        },
+        {
+            "Name": "Niagara",
+            "Enabled": true
+        },
+        {
+            "Name": "AudioModulation",
+            "Enabled": true,
+            "Optional": true
+        }
+    ]
+}
