@@ -365,6 +365,13 @@ public:
 	UPROPERTY(Config)
 	FFilePath WwiseMacInstallationPath_DEPRECATED;
 
+	// Reflected properties present in retail PAYDAY 3.
+	UPROPERTY(Config, EditAnywhere, Category = "Initialization")
+	uint32 MemoryBudget = 0;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Initialization")
+	FString MasterVolumeRTPC;
+
 	static FString DefaultSoundDataFolder;
 
 	virtual void PostInitProperties() override;
