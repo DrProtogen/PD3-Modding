@@ -5,6 +5,7 @@
 #include "CrimeFactoryWidget.h"
 #include "AssetPalette/CrimeFactoryAssetPalette.h"
 #include "PD3ModkitUpdater.h"
+#include "Metadata/CrimeFactoryMetadataSync.h"
 #include "ContentBrowserModule.h"
 #include "ISettingsModule.h"
 #include "ISettingsSection.h"
@@ -34,6 +35,7 @@ DEFINE_LOG_CATEGORY(LogCrimeFactory)
 const FName FCrimeFactoryModule::ModCreatorTabName(TEXT("ModCreator"));
 
 void FCrimeFactoryModule::StartupModule() {
+    CrimeFactoryMetadataSync::Initialize();
 #if __has_include("PD3CookedEditorSettings.h")
     CookedEditorSettingsChangedHandle = GetMutableDefault<UPD3CookedEditorSettings>()->OnSettingChanged().AddStatic(
         &UCrimeFactorySettings::OnCookedEditorSettingsChanged);
@@ -150,6 +152,9 @@ void FCrimeFactoryModule::StartupModule() {
 }
 
 void FCrimeFactoryModule::ShutdownModule() {
+    IPluginManager::Get().OnNewPluginMounted().Remove(PluginMountedHandle);
+    IPluginManager::Get().OnNewPluginContentMounted().Remove(PluginContentMountedHandle);
+    CrimeFactoryMetadataSync::Shutdown();
     CrimeFactoryAssetPalette::Unregister();
     if (ToolbarExtender.IsValid())
     {
@@ -617,46 +622,17 @@ void FCrimeFactoryModule::RegisterModTemplates()
         SaveAndRefreshAssetManagerSettings();
     }
 
-    IPluginManager::Get().OnNewPluginMounted().AddLambda(
+    PluginMountedHandle = IPluginManager::Get().OnNewPluginMounted().AddLambda(
         [this](IPlugin& Plugin)
         {
-            const FString PluginName = Plugin.GetName();
-
-            if (Plugin.GetType() == EPluginType::Mod)
-            {
-                // Adds /<ModName> immediately even if PAL discovery is one tick early.
-                EnsureAssetManagerRegistrationForPlugin(Plugin);
-
-                // In UE5.5 the mount notification is observed before the package
-                // mount is fully visible. Retry once after the callback returns.
-                AsyncTask(
-                    ENamedThreads::GameThread,
-                    [this, PluginName]()
-                    {
-                        TSharedPtr<IPlugin> MountedPlugin =
-                            IPluginManager::Get().FindPlugin(PluginName);
-
-                        if (!MountedPlugin.IsValid() ||
-                            MountedPlugin->GetType() != EPluginType::Mod)
-                        {
-                            return;
-                        }
-
-                        UE_LOG(
-                            LogCrimeFactory,
-                            Verbose,
-                            TEXT("Deferred Asset Manager PAL rescan for newly-mounted mod %s"),
-                            *PluginName);
-
-                        EnsureAssetManagerRegistrationForPlugin(
-                            *MountedPlugin);
-                    });
-            }
-
-            if (IsPluginAMod(Plugin))
-            {
-                AddModTemplatesFromPlugin(Plugin);
-            }
+            if (IsPluginAMod(Plugin)) AddModTemplatesFromPlugin(Plugin);
+        });
+    PluginContentMountedHandle = IPluginManager::Get().OnNewPluginContentMounted().AddLambda(
+        [this](IPlugin& Plugin)
+        {
+            // OnNewPluginMounted fires before RegisterMountPoint in UE5.5.
+            // PAL discovery must wait until the content mount is actually available.
+            if (Plugin.GetType() == EPluginType::Mod) EnsureAssetManagerRegistrationForPlugin(Plugin);
         });
 }
 

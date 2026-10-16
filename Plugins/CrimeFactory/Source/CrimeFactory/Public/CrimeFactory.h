@@ -32,6 +32,7 @@ public:
     static const FName ModCreatorTabName;
 private:
     FDelegateHandle CookedEditorSettingsChangedHandle;
+    FDelegateHandle PluginMountedHandle, PluginContentMountedHandle;
     TSharedPtr<class FUICommandList> PluginCommands;
     TSharedPtr<class FExtender> ToolbarExtender;
 

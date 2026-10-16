@@ -92,7 +92,7 @@ void SCrimeFactoryModInspector::Rebuild()
                 + SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)
                 [ SNew(SButton).Text(LOCTEXT("Fix", "Fix Issues"))
                     .Visibility(Data->Issues.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
-                    .IsEnabled_Lambda([this] { return Data && Data->bCanFix && FixAction.IsBound(); })
+                    .IsEnabled(Data->bCanFix && FixAction.IsBound())
                     .ToolTipText(LOCTEXT("FixHelp", "Repair safe PAL and Asset Manager configuration issues. Missing references require manual repair."))
                     .OnClicked_Lambda([this] { if (Data && Data->bCanFix) FixAction.ExecuteIfBound(); return FReply::Handled(); }) ]
                 + SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)

@@ -7,6 +7,9 @@
 #include "Interfaces/IPluginManager.h"
 #include "Styling/SlateColor.h"
 
+struct FCrimeFactoryPreflightResult;
+struct FCrimeFactoryForgeBatch;
+
 /**
  * Entry of a mod within the mod list of the crimefactory window
  */
@@ -18,6 +21,7 @@ class SCrimeFactoryModEntry : public SCompoundWidget {
 
     void PackageMod(const TArray<TSharedPtr<SCrimeFactoryModEntry>>& NextEntries) const;
     bool RunPreflightValidation() const;
+    FCrimeFactoryPreflightResult CollectPreflightResult() const;
 
     FReply OnOpenInformation();
     FReply OnOpenModContent();
@@ -34,6 +38,7 @@ class SCrimeFactoryModEntry : public SCompoundWidget {
     void OnEnableCheckboxChanged(ECheckBoxState NewState);
 
     void OnEditMod();
+    void RefreshModIcon();
     FReply OnEditModFinished(class UModMetadataObject* Metadata);
     FReply OnDeleteMod();
 
@@ -44,12 +49,15 @@ class SCrimeFactoryModEntry : public SCompoundWidget {
     FORCEINLINE void SetSelected(bool bInSelected) {
         if (Checkbox) {
             Checkbox->SetIsChecked(bInSelected);
+            OnEnableCheckboxChanged(bInSelected ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
         }
     }
 
 private:
+    void PackageMod(const TArray<TSharedPtr<SCrimeFactoryModEntry>>& NextEntries,
+        TSharedRef<struct FCrimeFactoryForgeBatch> Batch) const;
     TSharedPtr<IPlugin> Mod;
-    TSharedPtr<SCrimeFactoryModEntryList> Owner;
+    TWeakPtr<SCrimeFactoryModEntryList> Owner;
     TSharedPtr<class SCheckBox> Checkbox;
 
     /** PAL/chunk information shown by the Information window. */
@@ -63,6 +71,11 @@ private:
 
     /** Brush for the mod's Icon128.png, or CrimeFactory128.png as fallback. */
     TSharedPtr<struct FSlateDynamicImageBrush> ModIconBrush;
+    FString ModIconFilename;
+    FDateTime ModIconTimestamp;
+    int64 ModIconFileSize = -1;
+    TSharedPtr<class SImage> ModIconImage;
+    EActiveTimerReturnType PollModIcon(double Time, float Delta);
     
     /** Dialog for editing mod properties */
     TSharedPtr<SWindow> PropertiesWindow;

@@ -21,6 +21,7 @@ namespace CrimeFactory.Automation
 		public bool StartGame;
 		public string GameDirectory;
 		public string LaunchGameType;
+        public string ZipExportDirectory;
 	}
 
 	internal sealed class CrimeFactoryPALPackagingManifest
@@ -2791,6 +2792,14 @@ namespace CrimeFactory.Automation
 			);
 		}
 
+        private static void ExportArchivedZip(ProjectParams projectParams, PD3Params pd3Params,
+            string platform, string pluginName)
+        {
+            var destination = CrimeFactoryZipExport.Copy(Path.GetDirectoryName(projectParams.RawProjectPath.ToString()),
+                pd3Params.ZipExportDirectory, platform, pluginName);
+            if (destination != null) LogInformation("Exported mod ZIP: {0}", destination);
+        }
+
 		private static void DeployWorkingPlugin(
 			ProjectParams dlcParams,
 			PD3Params pd3Params,
@@ -2987,6 +2996,14 @@ namespace CrimeFactory.Automation
 					projectParams,
 					deploymentContexts
 				);
+
+                if (!string.IsNullOrWhiteSpace(pd3Params.ZipExportDirectory))
+                {
+                    result.SetPhase("Export ZIP");
+                    foreach (var context in deploymentContexts)
+                        ExportArchivedZip(projectParams, pd3Params, context.FinalCookPlatform,
+                            projectParams.DLCFile.GetFileNameWithoutAnyExtensions());
+                }
 
 				result.SetPhase("Deploy mod to PAYDAY 3");
 				DeployPluginProject(
@@ -3443,6 +3460,12 @@ namespace CrimeFactory.Automation
 					finalCookPlatform
 				);
 
+                if (!string.IsNullOrWhiteSpace(pd3Params.ZipExportDirectory))
+                {
+                    result.SetPhase("Export ZIP");
+                    ExportArchivedZip(dlcParams, pd3Params, finalCookPlatform, pluginName);
+                }
+
 				result.SetPhase("Deploy mod to PAYDAY 3");
 				DeployWorkingPlugin(
 					dlcParams,
@@ -3518,6 +3541,7 @@ namespace CrimeFactory.Automation
 					LaunchGameType =
 						ParseOptionalStringParam(
 							"LaunchGameType"),
+                    ZipExportDirectory = ParseOptionalStringParam("ZipExportDir"),
 					CopyToGameDirectory =
 						ParseParam("CopyToGameDir")
 				};

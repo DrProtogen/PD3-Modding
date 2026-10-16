@@ -23,12 +23,19 @@ UModMetadataObject::UModMetadataObject(const FObjectInitializer& ObjectInitializ
 
 void UModMetadataObject::PopulateFromDescriptor(const FPluginDescriptor& InDescriptor)
 {
+	ModAuthors.Reset();
+	ModDependencies.Reset();
+	ModPageURL.Reset();
+	ModEnvironment.Reset();
+	ModLoaderVersion.Reset();
 	Version = InDescriptor.Version;
 	VersionName = InDescriptor.VersionName;
+	SemVersion = VersionName;
 	FriendlyName = InDescriptor.FriendlyName;
 	Description = InDescriptor.Description;
 	//Category = InDescriptor.Category; // Keep "Modding" as set in the ctor
 	CreatedBy = InDescriptor.CreatedBy;
+	Dependencies.Reset();
 	CreatedByURL = InDescriptor.CreatedByURL;
 	DocsURL = InDescriptor.DocsURL;
 	SupportURL = InDescriptor.SupportURL;
@@ -50,6 +57,11 @@ void UModMetadataObject::PopulateFromDescriptor(const FPluginDescriptor& InDescr
 	CachedJson->TryGetStringField( TEXT("SemVersion"), SemVersion );
 	CachedJson->TryGetStringField( TEXT("RemoteVersionRange"), RemoteVersionRange );
 	CachedJson->TryGetBoolField( TEXT("RequiredOnRemote"), bRequiredOnRemote );
+	CachedJson->TryGetStringArrayField(TEXT("ModAuthors"), ModAuthors);
+	if (ModAuthors.IsEmpty() && !CreatedBy.IsEmpty()) ModAuthors.Add(CreatedBy);
+	CachedJson->TryGetStringField(TEXT("ModPageURL"), ModPageURL);
+	CachedJson->TryGetStringField(TEXT("ModEnvironment"), ModEnvironment);
+	CachedJson->TryGetStringField(TEXT("ModLoaderVersion"), ModLoaderVersion);
 }
 
 void UModMetadataObject::CopyIntoDescriptor(FPluginDescriptor& OutDescriptor)
@@ -63,6 +75,20 @@ void UModMetadataObject::CopyIntoDescriptor(FPluginDescriptor& OutDescriptor)
 	OutDescriptor.CreatedByURL = CreatedByURL;
 	OutDescriptor.DocsURL = DocsURL;
 	OutDescriptor.SupportURL = SupportURL;
+	const auto Extra = [&OutDescriptor](const TCHAR* Name, const FString& Value)
+	{ OutDescriptor.AdditionalFieldsToWrite.Add(Name, MakeShared<FJsonValueString>(Value)); };
+	Extra(TEXT("ModPageURL"), ModPageURL);
+	Extra(TEXT("ModEnvironment"), ModEnvironment);
+	Extra(TEXT("ModLoaderVersion"), ModLoaderVersion);
+	const auto ArrayExtra = [&OutDescriptor](const TCHAR* Name, const TArray<FString>& Values)
+	{
+		TArray<TSharedPtr<FJsonValue>> Json;
+		for (const auto& Value : Values) Json.Add(MakeShared<FJsonValueString>(Value));
+		OutDescriptor.AdditionalFieldsToWrite.Add(Name, MakeShared<FJsonValueArray>(Json));
+	};
+	ArrayExtra(TEXT("ModAuthors"), ModAuthors);
+	OutDescriptor.AdditionalFieldsToWrite.Remove(TEXT("ModDependencies"));
+	OutDescriptor.AdditionalFieldsToRemove.Add(TEXT("ModDependencies"));
 	TArray<FPluginReferenceDescriptor> RemovedMods = OutDescriptor.Plugins;
 	for (FModDependencyDescriptorData& Dependency : Dependencies)
 	{
@@ -118,8 +144,14 @@ void UModMetadataObject::CopyIntoDescriptor(FPluginDescriptor& OutDescriptor)
 void UModMetadataObject::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	UObject::PostEditChangeProperty(PropertyChangedEvent);
+	const FName Member = PropertyChangedEvent.MemberProperty ? PropertyChangedEvent.MemberProperty->GetFName() : PropertyChangedEvent.GetPropertyName();
+	if (Member == GET_MEMBER_NAME_CHECKED(UModMetadataObject, ModAuthors)) CreatedBy = FString::Join(ModAuthors, TEXT(", "));
+	else if (Member == GET_MEMBER_NAME_CHECKED(UModMetadataObject, CreatedBy))
+		ModAuthors = CreatedBy.IsEmpty() ? TArray<FString>() : TArray<FString>{CreatedBy};
+	if (Member == GET_MEMBER_NAME_CHECKED(UModMetadataObject, VersionName)) SemVersion = VersionName;
 	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UModMetadataObject, SemVersion))
 	{
+		VersionName = SemVersion;
 		int32 DotIdx = -1;
 		if (SemVersion.FindChar('.', DotIdx))
 		{
@@ -131,6 +163,7 @@ void UModMetadataObject::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 			Version = 0;
 		}
 	}
+	if (Member == GET_MEMBER_NAME_CHECKED(UModMetadataObject, VersionName)) Version = FCString::Atoi(*VersionName);
 }
 #endif
 
@@ -240,6 +273,12 @@ void FModMetadataCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBui
 				.VAlign(VAlign_Center)
 				[
 					SNew(SExternalImage, CurrentIconPath, ModMetadata->TargetIconPath)
+					.FileExtensions({TEXT("png")})
+					.OnPostExternalImageCopy(FOnPostExternalImageCopy::CreateLambda([Weak = TWeakObjectPtr<UModMetadataObject>(ModMetadata)](const FString&)
+					{
+						if (const auto Object = Weak.Get()) Object->OnIconChanged.ExecuteIfBound();
+						return true;
+					}))
 					.FileDescription(IconDesc)
 					.MaxDisplaySize(FVector2D(128, 128))
 					// .RequiredSize(FIntPoint(128, 128)) // UE wants the image to be 128x128, but that size is not enforced anywhere else

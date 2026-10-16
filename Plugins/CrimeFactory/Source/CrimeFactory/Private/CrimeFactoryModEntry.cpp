@@ -4,6 +4,9 @@
 #include "CrimeFactorySettings.h"
 #include "CrimeFactoryStyle.h"
 #include "Packaging/CrimeFactoryPackagingUI.h"
+#include "Packaging/CrimeFactoryGameProcess.h"
+#include "Metadata/CrimeFactoryMetadataSync.h"
+#include "Metadata/CrimeFactoryModIcon.h"
 #include "Information/SCrimeFactoryModInspector.h"
 #include "ISourceControlModule.h"
 #include "ISourceControlProvider.h"
@@ -19,6 +22,8 @@
 #include "Modules/ModuleManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Misc/ScopeExit.h"
+#include "Templates/Atomic.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "UObject/Package.h"
@@ -46,6 +51,21 @@
 #include "Styling/CoreStyle.h"
 
 #define LOCTEXT_NAMESPACE "CrimeFactoryModListEntry"
+
+static TAtomic<bool> GCrimeFactoryForgeActive(false);
+
+struct FCrimeFactoryForgeBatch
+{
+    TSet<const SCrimeFactoryModEntry*> ApprovedEntries;
+    TArray<TSharedPtr<const SCrimeFactoryModEntry>> Entries;
+    FString ZipExportDirectory;
+    TAtomic<bool> bFinished{false};
+    void Finish()
+    {
+        if (!bFinished.Exchange(true)) GCrimeFactoryForgeActive.Store(false);
+    }
+    ~FCrimeFactoryForgeBatch() { Finish(); }
+};
 
 namespace
 {
@@ -516,6 +536,7 @@ namespace
 	FString ClassifyPackagingFailure(
 		const FCrimeFactoryUATResult& Result)
 	{
+        if (Result.Phase == TEXT("Export ZIP")) return TEXT("ZIP export");
 		const FString Combined =
 			Result.Phase +
 			TEXT("\n") +
@@ -619,6 +640,9 @@ namespace
 		const FString& Category,
 		const FCrimeFactoryUATResult& Result)
 	{
+        if (Category == TEXT("ZIP export"))
+            return TEXT("The normal ZIP remains in Saved/ArchivedPlugins. Check the Additional ZIP Export Folder in CrimeFactory settings, available disk space, permissions, and whether the destination ZIP is open in another application.");
+
 		if (Category == TEXT("Automation script compile"))
 		{
 			return TEXT(
@@ -2459,7 +2483,8 @@ namespace
 		{
 			TEXT("CrimeFactory.Automation.csproj"),
 			TEXT("CrimeFactory.Automation.csproj.props"),
-			TEXT("PackagePlugin.cs")
+			TEXT("PackagePlugin.cs"),
+            TEXT("CrimeFactoryZipExport.cs")
 		};
 
 		for (const TCHAR* SourceFile : SourceFiles)
@@ -2495,7 +2520,8 @@ namespace
 		{
 			TEXT("CrimeFactory.Automation.csproj"),
 			TEXT("CrimeFactory.Automation.csproj.props"),
-			TEXT("PackagePlugin.cs")
+			TEXT("PackagePlugin.cs"),
+            TEXT("CrimeFactoryZipExport.cs")
 		};
 
 		uint32 Fingerprint = 2166136261u;
@@ -2887,96 +2913,8 @@ void SCrimeFactoryModEntry::Construct(
 				PluginName,
 				false));
 
-	/*
-	 * CrimeFactory mods live under <Project>/Mods rather than Unreal's normal
-	 * <Project>/Plugins root. Use the physical CrimeFactory mod directory as the
-	 * authoritative icon location instead of relying on IPlugin::GetBaseDir(),
-	 * which can point at a discovered/search-path representation that is not the
-	 * directory the mod was actually created in during the current editor run.
-	 *
-	 * Expected path:
-	 *   <Project>/Mods/<ModName>/Resources/Icon128.png
-	 */
-	FString IconPath =
-		FPaths::ConvertRelativePathToFull(
-			FPaths::Combine(
-				FPaths::ProjectDir(),
-				TEXT("Mods"),
-				Mod->GetName(),
-				TEXT("Resources"),
-				TEXT("Icon128.png")));
-
-	FPaths::NormalizeFilename(IconPath);
-
-	/*
-	 * Keep GetBaseDir() as a secondary lookup for engine/project plugins shown
-	 * through the optional filters, where the plugin may not physically live in
-	 * <Project>/Mods.
-	 */
-	if (!FPaths::FileExists(IconPath))
-	{
-		FString PluginBaseIconPath =
-			FPaths::ConvertRelativePathToFull(
-				FPaths::Combine(
-					Mod->GetBaseDir(),
-					TEXT("Resources"),
-					TEXT("Icon128.png")));
-
-		FPaths::NormalizeFilename(PluginBaseIconPath);
-
-		if (FPaths::FileExists(PluginBaseIconPath))
-		{
-			IconPath = MoveTemp(PluginBaseIconPath);
-		}
-	}
-
-	if (!FPaths::FileExists(IconPath))
-	{
-		const TSharedPtr<IPlugin> CrimeFactoryPlugin =
-			IPluginManager::Get().FindPlugin(
-				TEXT("CrimeFactory"));
-
-		if (CrimeFactoryPlugin.IsValid())
-		{
-			IconPath =
-				FPaths::ConvertRelativePathToFull(
-					FPaths::Combine(
-						CrimeFactoryPlugin->GetBaseDir(),
-						TEXT("Resources"),
-						TEXT("CrimeFactory128.png")));
-
-			FPaths::NormalizeFilename(IconPath);
-		}
-	}
-
-	UE_LOG(
-		LogCrimeFactory,
-		Verbose,
-		TEXT("Mod card icon for '%s': %s (exists=%s)"),
-		*Mod->GetName(),
-		*IconPath,
-		FPaths::FileExists(IconPath) ? TEXT("true") : TEXT("false"));
-
-	/*
-	 * These icons live outside a registered Slate style and can appear after
-	 * the editor has already started (for example after Create Mod / legacy
-	 * import). A normal FSlateImageBrush can leave the renderer with no loaded
-	 * resource here, which paints as a solid white rectangle. Use a dynamic
-	 * image brush so Slate registers and loads the PNG resource on demand.
-	 */
-	ModIconBrush =
-		MakeShared<FSlateDynamicImageBrush>(
-			FName(*IconPath),
-			FVector2D(128.0f, 128.0f),
-			FLinearColor::White,
-			ESlateBrushTileType::NoTile,
-			ESlateBrushImageType::FullColor);
-
-	const FText DisplayName =
-		FText::FromString(
-			Mod->GetDescriptor().FriendlyName.IsEmpty()
-				? Mod->GetName()
-				: Mod->GetDescriptor().FriendlyName);
+    RefreshModIcon();
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCrimeFactoryModEntry::PollModIcon));
 
 	ChildSlot
 	[
@@ -3009,14 +2947,17 @@ void SCrimeFactoryModEntry::Construct(
 					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(DisplayName)
+						.Text_Lambda([this]
+                        {
+                            return FText::FromString(Mod->GetDescriptor().FriendlyName.IsEmpty() ? Mod->GetName() : Mod->GetDescriptor().FriendlyName);
+                        })
 						.Justification(ETextJustify::Center)
 						.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 12))
 						.HighlightText_Lambda(
-							[InOwner]()
+							[WeakOwner = TWeakPtr<SCrimeFactoryModEntryList>(InOwner)]()
 							{
-								return FText::FromString(
-									InOwner->GetLastFilter());
+								const auto Pinned = WeakOwner.Pin();
+								return Pinned ? FText::FromString(Pinned->GetLastFilter()) : FText::GetEmpty();
 							})
 					]
 
@@ -3122,8 +3063,8 @@ void SCrimeFactoryModEntry::Construct(
 						.WidthOverride(128.0f)
 						.HeightOverride(128.0f)
 						[
-							SNew(SImage)
-							.Image(ModIconBrush.Get())
+							SAssignNew(ModIconImage, SImage)
+							.Image(ModIconBrush ? ModIconBrush.Get() : FAppStyle::GetBrush("Icons.Plugin"))
 						]
 					]
 				]
@@ -3524,7 +3465,10 @@ void SCrimeFactoryModEntry::OnEditMod()
 	UModMetadataObject* MetadataObject = NewObject<UModMetadataObject>();
 	MetadataObject->TargetIconPath = Mod->GetBaseDir() / TEXT("Resources/Icon128.png");
 	MetadataObject->PopulateFromDescriptor(Mod->GetDescriptor());
+    CrimeFactoryMetadataSync::PopulateProperties(*Mod, *MetadataObject);
+    MetadataObject->OnIconChanged = FSimpleDelegate::CreateSP(this, &SCrimeFactoryModEntry::RefreshModIcon);
 	MetadataObject->AddToRoot();
+    ON_SCOPE_EXIT { if (MetadataObject->IsRooted()) MetadataObject->RemoveFromRoot(); };
 
 	// Create a property view
 	FPropertyEditorModule& EditModule = FModuleManager::Get().GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
@@ -3578,7 +3522,7 @@ void SCrimeFactoryModEntry::OnEditMod()
 			]
 		];
 
-	FSlateApplication::Get().AddModalWindow(PropertiesWindow.ToSharedRef(), Owner);
+	FSlateApplication::Get().AddModalWindow(PropertiesWindow.ToSharedRef(), Owner.Pin());
 }
 
 FReply SCrimeFactoryModEntry::OnEditModFinished(UModMetadataObject* MetadataObject)
@@ -3588,7 +3532,6 @@ FReply SCrimeFactoryModEntry::OnEditModFinished(UModMetadataObject* MetadataObje
 	// Update the descriptor with the new metadata
 	FPluginDescriptor NewDescriptor = OldDescriptor;
 	MetadataObject->CopyIntoDescriptor(NewDescriptor);
-	MetadataObject->RemoveFromRoot();
 
 	// Close the properties window
 	PropertiesWindow->RequestDestroyWindow();
@@ -3621,7 +3564,38 @@ FReply SCrimeFactoryModEntry::OnEditModFinished(UModMetadataObject* MetadataObje
 			FMessageDialog::Open(EAppMsgType::Ok, FailReason);
 		}
 	}
+    RefreshModIcon();
+    FString SyncError;
+    if (!CrimeFactoryMetadataSync::Synchronize(*Mod, true, SyncError))
+        FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(SyncError));
 	return FReply::Handled();
+}
+
+void SCrimeFactoryModEntry::RefreshModIcon()
+{
+    FString Filename = FPaths::ConvertRelativePathToFull(Mod->GetBaseDir() / TEXT("Resources/Icon128.png"));
+    if (!FPaths::FileExists(Filename))
+        if (const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CrimeFactory")))
+            Filename = FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir() / TEXT("Resources/CrimeFactory128.png"));
+    auto Brush = CrimeFactoryModIcon::Load(Filename);
+    if (!Brush)
+        if (const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CrimeFactory")))
+            Brush = CrimeFactoryModIcon::Load(Plugin->GetBaseDir() / TEXT("Resources/CrimeFactory128.png"));
+    // Update the widget before releasing the previous brush/resource.
+    if (ModIconImage) ModIconImage->SetImage(Brush ? Brush.Get() : FAppStyle::GetBrush("Icons.Plugin"));
+    ModIconBrush = MoveTemp(Brush);
+    ModIconFilename = Filename;
+    ModIconTimestamp = IFileManager::Get().GetTimeStamp(*Filename);
+    ModIconFileSize = IFileManager::Get().FileSize(*Filename);
+}
+
+EActiveTimerReturnType SCrimeFactoryModEntry::PollModIcon(double Time, float Delta)
+{
+    const FString Filename = FPaths::ConvertRelativePathToFull(Mod->GetBaseDir() / TEXT("Resources/Icon128.png"));
+    if ((FPaths::FileExists(Filename) && Filename != ModIconFilename)
+        || (Filename == ModIconFilename && (IFileManager::Get().GetTimeStamp(*Filename) != ModIconTimestamp
+            || IFileManager::Get().FileSize(*Filename) != ModIconFileSize))) RefreshModIcon();
+    return EActiveTimerReturnType::Continue;
 }
 
 FString GetArgumentForLaunchType(
@@ -3656,18 +3630,14 @@ FText GetCurrentPlatformName() {
 #endif
 }
 
-bool SCrimeFactoryModEntry::RunPreflightValidation() const
+FCrimeFactoryPreflightResult SCrimeFactoryModEntry::CollectPreflightResult() const
 {
-	if (!Mod.IsValid())
-	{
-		FMessageDialog::Open(
-			EAppMsgType::Ok,
-			LOCTEXT(
-				"PreflightInvalidMod",
-				"CrimeFactory preflight failed because the mod entry is no longer valid."));
-
-		return false;
-	}
+    FCrimeFactoryPreflightResult Result;
+    if (!Mod.IsValid())
+    {
+        Result.Error(TEXT("The selected mod is no longer available. Refresh the mod list and try again."));
+        return Result;
+    }
 
 	const FString PluginName = Mod->GetName();
 
@@ -3688,7 +3658,6 @@ bool SCrimeFactoryModEntry::RunPreflightValidation() const
 
 	const FSoftObjectPath PALObjectPath(PALObjectPathString);
 
-	FCrimeFactoryPreflightResult Result;
 
 	// ------------------------------------------------------------------
 	// Basic plugin/filesystem sanity.
@@ -4071,11 +4040,67 @@ bool SCrimeFactoryModEntry::RunPreflightValidation() const
 		TEXT("%s"),
 		*Report);
 
-	return CrimeFactoryPackagingUI::ConfirmPreflight(PluginName, Result);
+	return Result;
 }
 
 
-void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModEntry>>& NextEntries) const {
+bool SCrimeFactoryModEntry::RunPreflightValidation() const
+{
+    return CrimeFactoryPackagingUI::ConfirmPreflight(Mod.IsValid() ? Mod->GetName() : TEXT("Unavailable mod"), CollectPreflightResult());
+}
+
+void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModEntry>>& NextEntries) const
+{
+    if (GCrimeFactoryForgeActive.Exchange(true))
+    {
+        FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("ForgeAlreadyActive", "CrimeFactory is already forging a mod batch. Wait for it to finish before starting another."));
+        return;
+    }
+    const auto Batch = MakeShared<FCrimeFactoryForgeBatch>();
+    Batch->Entries.Add(SharedThis(this));
+    TArray<TSharedPtr<SCrimeFactoryModEntry>> Queue;
+    for (const auto& Entry : NextEntries)
+        if (Entry.IsValid()) { Batch->Entries.Add(Entry); Queue.Add(Entry); }
+    FCrimeFactoryPreflightResult Combined;
+    for (const auto& Entry : Batch->Entries)
+    {
+        FString MetadataError;
+        if (Entry->Mod.IsValid() && !CrimeFactoryMetadataSync::Synchronize(*Entry->Mod, true, MetadataError))
+            Combined.Error(Entry->Mod->GetName() + TEXT(" - ") + MetadataError);
+        if (Entry->Mod.IsValid())
+            FModuleManager::LoadModuleChecked<FCrimeFactoryModule>(TEXT("CrimeFactory")).EnsureAssetManagerRegistrationForPlugin(*Entry->Mod);
+        const auto Result = Entry->CollectPreflightResult();
+        const FString Name = Entry->Mod.IsValid() ? Entry->Mod->GetName() : TEXT("Unavailable mod");
+        for (const auto& Item : Result.Items)
+            Combined.Add(Item.Severity, Batch->Entries.Num() > 1 ? Name + TEXT(" - ") + Item.Message : Item.Message);
+    }
+    const FString Export = UCrimeFactorySettings::Get()->ZipExportDirectory.Path.TrimStartAndEnd();
+    if (!Export.IsEmpty())
+    {
+        if (Export.Contains(TEXT("\"")) || Export.Contains(TEXT("\r")) || Export.Contains(TEXT("\n")))
+            Combined.Error(TEXT("The ZIP export folder contains an invalid quote or line break. Choose a valid folder in CrimeFactory settings."));
+        else
+        {
+            Batch->ZipExportDirectory = FPaths::IsRelative(Export) ? FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), Export) : Export;
+            FPaths::NormalizeDirectoryName(Batch->ZipExportDirectory);
+            const FString Probe = FPaths::Combine(Batch->ZipExportDirectory, TEXT(".CrimeFactoryWriteTest_") + FGuid::NewGuid().ToString(EGuidFormats::Digits));
+            if (!IFileManager::Get().MakeDirectory(*Batch->ZipExportDirectory, true) || !FFileHelper::SaveStringToFile(TEXT(""), *Probe))
+                Combined.Error(TEXT("CrimeFactory cannot write to the ZIP export folder: ") + Batch->ZipExportDirectory);
+            else IFileManager::Get().Delete(*Probe);
+        }
+    }
+    const FString Title = Batch->Entries.Num() == 1 && Mod.IsValid() ? Mod->GetName() : FString::Printf(TEXT("%d selected mods"), Batch->Entries.Num());
+    if (!CrimeFactoryPackagingUI::ConfirmPreflight(Title, Combined)) return;
+    for (const auto& Entry : Batch->Entries) Batch->ApprovedEntries.Add(Entry.Get());
+    PackageMod(Queue, Batch);
+}
+
+
+void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModEntry>>& NextEntries,
+    TSharedRef<FCrimeFactoryForgeBatch> Batch) const {
+    bool bTaskScheduled = false;
+    ON_SCOPE_EXIT { if (!bTaskScheduled) Batch->Finish(); };
+    if (!Mod.IsValid() || !Batch->ApprovedEntries.Contains(this)) return;
     UCrimeFactorySettings* Settings = UCrimeFactorySettings::Get();
     const FString PluginName = Mod->GetName();
     const FString GamePath = Settings->PD3GamePath.Path;
@@ -4104,6 +4129,9 @@ void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModE
     }
 
     FString AdditionalUATArguments;
+    if (!Batch->ZipExportDirectory.IsEmpty())
+        AdditionalUATArguments += FString::Printf(TEXT("-ZipExportDir=\"%s\" "), *Batch->ZipExportDirectory);
+
     if (Settings->bCopyModsToGame) {
         AdditionalUATArguments.Append(TEXT("-CopyToGameDir "));
     }
@@ -4122,18 +4150,29 @@ void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModE
 
     CrimeFactoryModule.EnsureAssetManagerRegistrationForPlugin(*Mod);
 
-    /*
-     * Validate the mod after CrimeFactory's automatic Asset Manager repair but
-     * before deciding on PASS 2 or launching UAT.
-     */
-    if (!RunPreflightValidation())
+    // Revalidate without another prompt in case assets changed while earlier mods cooked.
+    FString MetadataError;
+    if (!CrimeFactoryMetadataSync::Synchronize(*Mod, true, MetadataError))
     {
-        UE_LOG(
-            LogCrimeFactory,
-            Warning,
-            TEXT("Packaging cancelled by preflight for mod %s."),
-            *PluginName);
-
+        FCrimeFactoryPackagingFailure Failure;
+        Failure.PluginName = PluginName;
+        Failure.Phase = TEXT("Metadata synchronization");
+        Failure.Message = MetadataError;
+        Failure.Suggestion = TEXT("Repair and save the mod properties and metadata DA, then forge again.");
+        CrimeFactoryPackagingUI::ShowFailure(Failure);
+        return;
+    }
+    const auto CurrentPreflight = CollectPreflightResult();
+    if (CurrentPreflight.HasErrors())
+    {
+        FCrimeFactoryPackagingFailure Failure;
+        Failure.PluginName = PluginName;
+        Failure.Phase = TEXT("Preflight revalidation");
+        Failure.Message = TEXT("This mod changed after the batch was approved and now has blocking errors.");
+        Failure.Details = CurrentPreflight.BuildReport(PluginName);
+        Failure.Suggestion = TEXT("Fix the reported issues and restart Forge Selected! for the remaining mods.");
+        Failure.RemainingModCount = NextEntries.Num();
+        CrimeFactoryPackagingUI::ShowFailure(Failure);
         return;
     }
 
@@ -4264,6 +4303,14 @@ void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModE
     );
 
     const FText PlatformName = GetCurrentPlatformName();
+    FString CloseError;
+    if (!CrimeFactoryGameProcess::CloseBeforeForge(CloseError))
+    {
+        FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(CloseError));
+        return;
+    }
+
+    bTaskScheduled = true;
     IUATHelperModule::Get().CreateUatTask(
         CommandLine,
         PlatformName,
@@ -4271,7 +4318,7 @@ void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModE
         LOCTEXT("PackageModTaskShortName", "Package Mod Task"),
         FCrimeFactoryStyle::Get().GetBrush("CrimeFactory.OpenPluginWindow"),
         nullptr,
-        [PluginName, ResultFile, UATLogFile, NextEntries](
+        [PluginName, ResultFile, UATLogFile, NextEntries, Batch](
             FString resultType,
             double runTime)
         {
@@ -4281,6 +4328,7 @@ void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModE
                  ResultFile,
                  UATLogFile,
                  NextEntries,
+                 Batch,
                  resultType,
                  runTime]()
                 {
@@ -4295,6 +4343,7 @@ void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModE
 
                     if (bFailed)
                     {
+                        Batch->Finish();
                         ShowPackagingFailureWindow(
                             PluginName,
                             resultType,
@@ -4325,8 +4374,9 @@ void SCrimeFactoryModEntry::PackageMod(const TArray<TSharedPtr<SCrimeFactoryModE
                                     });
 
                         NextMod->PackageMod(
-                            RemainingEntries);
+                            RemainingEntries, Batch);
                     }
+                    else Batch->Finish();
                 });
         }
     );

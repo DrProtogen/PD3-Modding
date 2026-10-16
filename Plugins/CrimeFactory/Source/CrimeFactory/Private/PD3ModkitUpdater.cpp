@@ -1,4 +1,5 @@
 #include "PD3ModkitUpdater.h"
+#include "Packaging/CrimeFactoryUpdaterUI.h"
 
 #include "Async/Async.h"
 #include "Containers/Ticker.h"
@@ -706,126 +707,53 @@ namespace PD3ModkitUpdater
 
         bCheckInProgress = false;
 
+        FCrimeFactoryUpdatePresentation View;
+        View.Branch = Result.BranchName;
+        View.Repository = Result.RepositoryRoot;
+        View.CurrentCommit = ShortCommit(Result.LocalCommit);
+        View.LatestCommit = ShortCommit(Result.RemoteCommit);
+        View.LatestSubject = Result.LatestCommitSubject;
+        View.CommitsAhead = Result.CommitsAhead;
+        View.CommitsBehind = Result.CommitsBehind;
+        View.LocalChanges = Result.LocalWorkingTreeChanges;
         switch (Result.State)
         {
         case EUpdateState::UpToDate:
-            if (bUserInitiated)
-            {
-                FString Message = FString::Printf(
-                    TEXT("PD3 Modkit is up to date.\n\nBranch: %s\nCommit: %s"),
-                    *Result.BranchName,
-                    *ShortCommit(Result.LocalCommit));
-
-                if (Result.CommitsAhead > 0)
-                {
-                    Message += FString::Printf(
-                        TEXT("\nLocal commits not on GitHub: %d"),
-                        Result.CommitsAhead);
-                }
-
-                if (Result.LocalWorkingTreeChanges > 0)
-                {
-                    Message += FString::Printf(
-                        TEXT("\nLocal uncommitted/untracked changes: %d"),
-                        Result.LocalWorkingTreeChanges);
-                }
-
-                const FText MessageText = FText::FromString(Message);
-                FMessageDialog::Open(EAppMsgType::Ok, MessageText, FText::FromString(TEXT("PD3 Modkit Updater")));
-            }
+            if (!bUserInitiated) return;
+            View.Status = TEXT("Your modkit is up to date");
+            View.Detail = TEXT("No official updates are waiting to be installed. Local commits and file changes are shown below.");
             break;
-
         case EUpdateState::Diverged:
-        {
-            const FString Message = FString::Printf(
-                TEXT(
-                    "An official PD3 Modkit update exists, but this checkout cannot be fast-forwarded automatically.\n\n"
-                    "Branch: %s\n"
-                    "Local commits not on remote: %d\n"
-                    "Remote commits not local: %d\n\n"
-                    "Merge or rebase your local branch manually, then check again."),
-                *Result.BranchName,
-                Result.CommitsAhead,
-                Result.CommitsBehind);
-
-            FMessageDialog::Open(
-                EAppMsgType::Ok,
-                FText::FromString(Message),
-                FText::FromString(TEXT("PD3 Modkit Update Requires Manual Merge")));
+            View.Status = TEXT("This update needs a manual merge");
+            View.Severity = ECrimeFactoryPreflightSeverity::Warning;
+            View.Detail = TEXT("The local and remote branches have diverged. Merge or rebase your local branch manually, then check again. CrimeFactory will not rewrite your commits.");
             break;
-        }
-
         case EUpdateState::UpdateAvailable:
-        {
-            FString Message = FString::Printf(
-                TEXT(
-                    "A PD3 Modkit update is available.\n\n"
-                    "Branch: %s\n"
-                    "Commits to pull: %d\n"
-                    "Current: %s\n"
-                    "Latest: %s"),
-                *Result.BranchName,
-                Result.CommitsBehind,
-                *ShortCommit(Result.LocalCommit),
-                *ShortCommit(Result.RemoteCommit));
-
-            if (!Result.LatestCommitSubject.IsEmpty())
-            {
-                Message += FString::Printf(
-                    TEXT("\nLatest commit: %s"),
-                    *Result.LatestCommitSubject);
-            }
-
-            if (Result.LocalWorkingTreeChanges > 0)
-            {
-                Message += FString::Printf(
-                    TEXT("\nLocal uncommitted/untracked changes: %d"),
-                    Result.LocalWorkingTreeChanges);
-            }
-
-            Message += TEXT(
-                "\n\nBefore updating, CrimeFactory will create a full backup of the project's Content folder. "
-                "Any uncommitted tracked or untracked Git changes will then be temporarily stashed and restored after the update. "
-                "Local commits are never rewritten automatically."
-                "\n\nUpdate now? Unreal Editor will close normally and a PD3 Modkit Updater "
-                "window will remain visible while the backup and update are performed. "
-                "When everything succeeds, the project will reopen automatically.");
-
-            const EAppReturnType::Type Response = FMessageDialog::Open(
-                EAppMsgType::YesNo,
-                FText::FromString(Message),
-                FText::FromString(TEXT("PD3 Modkit Update Available")));
-
-            if (Response == EAppReturnType::Yes)
-            {
-                FString LaunchError;
-                if (!LaunchUpdateHelperAndCloseEditor(Result, LaunchError))
-                {
-                    FMessageDialog::Open(
-                        EAppMsgType::Ok,
-                        FText::FromString(LaunchError),
-                        FText::FromString(TEXT("PD3 Modkit Update Failed")));
-                }
-            }
+            View.Status = TEXT("A modkit update is available");
+            View.Severity = ECrimeFactoryPreflightSeverity::Warning;
+            View.bCanUpdate = true;
+            View.Detail = TEXT("Unreal Editor will save your work and close. The standalone updater will first back up the project's Content folder, temporarily stash tracked and untracked local changes, update Git, restore your changes, and reopen the project. Local commits are never rewritten automatically.");
             break;
-        }
-
         case EUpdateState::Error:
         default:
-            UE_LOG(
-                LogTemp,
-                Warning,
-                TEXT("PD3 Modkit update check failed: %s"),
-                *Result.Error);
-
-            if (bUserInitiated)
-            {
-                FMessageDialog::Open(
-                    EAppMsgType::Ok,
-                    FText::FromString(Result.Error),
-                    FText::FromString(TEXT("PD3 Modkit Update Check Failed")));
-            }
+            UE_LOG(LogTemp, Warning, TEXT("PD3 Modkit update check failed: %s"), *Result.Error);
+            if (!bUserInitiated) return;
+            View.Status = TEXT("The update check could not finish");
+            View.Severity = ECrimeFactoryPreflightSeverity::Error;
+            View.Detail = Result.Error;
             break;
+        }
+        if (CrimeFactoryUpdaterUI::Present(View) && View.bCanUpdate)
+        {
+            FString LaunchError;
+            if (!LaunchUpdateHelperAndCloseEditor(Result, LaunchError))
+            {
+                View.bCanUpdate = false;
+                View.Status = TEXT("The updater could not start");
+                View.Detail = LaunchError;
+                View.Severity = ECrimeFactoryPreflightSeverity::Error;
+                CrimeFactoryUpdaterUI::Present(View);
+            }
         }
     }
 }

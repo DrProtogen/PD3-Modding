@@ -274,7 +274,7 @@ TSharedRef<SWidget> CrimeFactoryPackagingUI::MakePreflightContent(const FString&
             bBlocked ? LOCTEXT("Blocked", "Packaging needs your attention") :
                 Result.WarningCount ? LOCTEXT("ReadyWarnings", "Ready to package — review warnings below") : LOCTEXT("Ready", "Ready to package"),
             bBlocked ? LOCTEXT("BlockedHelp", "Fix the errors below, then run Forge Selected! again.") :
-                LOCTEXT("ReadyHelp", "Your mod has passed the required checks. Continue when you’re ready."), Status) ]
+                LOCTEXT("ReadyHelp", "The selected mods passed the required checks. Continue to close PAYDAY 3 if it is running and begin forging."), Status) ]
         + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 18)
         [
             SNew(SHorizontalBox)

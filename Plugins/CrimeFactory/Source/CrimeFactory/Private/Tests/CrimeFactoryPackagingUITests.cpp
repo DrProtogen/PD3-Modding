@@ -2,8 +2,13 @@
 
 #include "Packaging/CrimeFactoryPackagingUI.h"
 #include "Information/SCrimeFactoryModInspector.h"
+#include "Packaging/CrimeFactoryUpdaterUI.h"
+#include "Packaging/CrimeFactoryGameProcess.h"
+#include "CrimeFactorySettings.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "ImageUtils.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/App.h"
@@ -194,6 +199,95 @@ bool FCrimeFactoryFailureUITest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Absent message explains how to investigate"), ContainsText(Content,
         TEXT("No exception message was recorded. Open the full log for more information.")));
     CapturePreview(*this, Content, TEXT("ForgingFailedNoLog.png"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrimeFactoryForgeWorkflowTest, "CrimeFactory.Packaging.ForgeWorkflowAndUpdater",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCrimeFactoryForgeWorkflowTest::RunTest(const FString& Parameters)
+{
+    const FString SettingsFile = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectSavedDir(),
+        TEXT("CrimeFactory/ExportSettings_") + FGuid::NewGuid().ToString(EGuidFormats::Digits) + TEXT(".ini")));
+    const FString ExportPath = TEXT("Folder with spaces/Mod exports");
+    auto* SavedSettings = NewObject<UCrimeFactorySettings>();
+    SavedSettings->ZipExportDirectory.Path = ExportPath;
+    SavedSettings->SaveConfig(CPF_Config, *SettingsFile);
+    auto* LoadedSettings = NewObject<UCrimeFactorySettings>();
+    LoadedSettings->LoadConfig(UCrimeFactorySettings::StaticClass(), *SettingsFile);
+    TestEqual(TEXT("ZIP export folder persists through config serialization"), LoadedSettings->ZipExportDirectory.Path, ExportPath);
+    ON_SCOPE_EXIT { IFileManager::Get().Delete(*SettingsFile); };
+    for (const FString& Name : {FString(TEXT("PAYDAY3.exe")), FString(TEXT("PAYDAY3Client-Win64-Shipping.exe")),
+        FString(TEXT("payday3client-wingdk-shipping.exe"))})
+        TestTrue(TEXT("Recognizes retail game executables"), CrimeFactoryGameProcess::IsGameExecutable(Name));
+    for (const FString& Name : {FString(TEXT("UnrealEditor.exe")), FString(TEXT("PAYDAY3Editor.exe")),
+        FString(TEXT("Steam.exe")), FString(TEXT("GameLaunchHelper.exe")), FString(TEXT("PAYDAY3.exe.bak"))})
+        TestFalse(TEXT("Never targets editors, launchers or unrelated programs"), CrimeFactoryGameProcess::IsGameExecutable(Name));
+
+#if PLATFORM_WINDOWS
+    FString FixtureExecutable;
+    if (FParse::Value(FCommandLine::Get(), TEXT("CrimeFactoryGameProcessFixture="), FixtureExecutable))
+    {
+        for (const FString Mode : {FString(TEXT("graceful")), FString(TEXT("force"))})
+        {
+            const FString Ready = FixtureExecutable + TEXT(".") + Mode + TEXT(".ready");
+            const FString Closed = FixtureExecutable + TEXT(".") + Mode + TEXT(".closed");
+            IFileManager::Get().Delete(*Ready);
+            IFileManager::Get().Delete(*Closed);
+            const FString Args = FString::Printf(TEXT("%s \"%s\" \"%s\""), *Mode, *Ready, *Closed);
+            uint32 FixturePid = 0;
+            FProcHandle Fixture = FPlatformProcess::CreateProc(*FixtureExecutable, *Args, false, true, true, &FixturePid, 0, nullptr, nullptr);
+            if (!TestTrue(TEXT("Synthetic game process starts"), Fixture.IsValid())) return false;
+            ON_SCOPE_EXIT
+            {
+                if (FPlatformProcess::IsProcRunning(Fixture)) FPlatformProcess::TerminateProc(Fixture, false);
+                FPlatformProcess::CloseProc(Fixture);
+            };
+            const double Deadline = FPlatformTime::Seconds() + 10;
+            while (!IFileManager::Get().FileExists(*Ready) && FPlatformTime::Seconds() < Deadline) FPlatformProcess::Sleep(0.05f);
+            if (!TestTrue(TEXT("Synthetic game process is ready"), IFileManager::Get().FileExists(*Ready))) return false;
+            for (FPlatformProcess::FProcEnumerator Processes; Processes.MoveNext();)
+                if (CrimeFactoryGameProcess::IsGameExecutable(Processes.GetCurrent().GetName()) && Processes.GetCurrent().GetPID() != FixturePid)
+                {
+                    AddError(TEXT("A real PAYDAY 3 session is running. Refusing to close it during the synthetic process test."));
+                    return false;
+                }
+            FString CloseError;
+            TestTrue(TEXT("Game shutdown completes before forging"), CrimeFactoryGameProcess::CloseBeforeForge(CloseError));
+            TestFalse(TEXT("Synthetic game is no longer running"), FPlatformProcess::IsProcRunning(Fixture));
+            TestEqual(TEXT("Graceful window close is preferred; no-window case uses fallback"),
+                IFileManager::Get().FileExists(*Closed), Mode == TEXT("graceful"));
+        }
+    }
+#endif
+
+    const auto Updates = MakeShared<int32>(0);
+    const auto Closes = MakeShared<int32>(0);
+    FCrimeFactoryUpdatePresentation View;
+    View.Status = TEXT("A modkit update is available");
+    View.Detail = TEXT("Save and close the editor, back up Content, restore local changes and reopen the project.");
+    View.Branch = TEXT("main");
+    View.CommitsBehind = 3;
+    View.LocalChanges = 2;
+    View.bCanUpdate = true;
+    View.Severity = ECrimeFactoryPreflightSeverity::Warning;
+    auto Content = CrimeFactoryUpdaterUI::MakeContent(View,
+        FSimpleDelegate::CreateLambda([Updates] { ++*Updates; }), FSimpleDelegate::CreateLambda([Closes] { ++*Closes; }));
+    const auto UpdateButton = FindButton(Content, TEXT("Update now"));
+    if (!TestTrue(TEXT("Update action exists"), UpdateButton.IsValid())) return false;
+    UpdateButton->SimulateClick();
+    TestEqual(TEXT("Only explicit Update dispatches updating"), *Updates, 1);
+    FindButton(Content, TEXT("Later"))->SimulateClick();
+    TestEqual(TEXT("Later only closes the review window"), *Closes, 1);
+    CapturePreview(*this, Content, TEXT("ModkitUpdateAvailable.png"));
+    View.bCanUpdate = false;
+    View.Status = TEXT("This update needs a manual merge");
+    View.Detail = TEXT("Merge or rebase the local branch manually. CrimeFactory never rewrites commits.");
+    Content = CrimeFactoryUpdaterUI::MakeContent(View,
+        FSimpleDelegate::CreateLambda([Updates] { ++*Updates; }), FSimpleDelegate());
+    FindButton(Content, TEXT("Update now"))->SimulateClick();
+    TestEqual(TEXT("A manual merge state cannot dispatch an update"), *Updates, 1);
+    CapturePreview(*this, Content, TEXT("ModkitUpdateManualMerge.png"));
     return true;
 }
 

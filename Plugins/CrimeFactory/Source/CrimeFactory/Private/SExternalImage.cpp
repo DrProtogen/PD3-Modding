@@ -99,7 +99,7 @@ bool SExternalImage::HandleExternalImagePicked(const FString& InChosenImage, con
 			FileManager.Delete(*TargetImagePath, bRequireExists, bEvenIfReadOnly, bQuiet);
 		}
 
-		return true;
+		return !OnPostExternalImageCopy.IsBound() || OnPostExternalImageCopy.Execute(InChosenImage);
 	}
 
 	if(OnPreExternalImageCopy.IsBound())
@@ -133,7 +133,8 @@ bool SExternalImage::HandleExternalImagePicked(const FString& InChosenImage, con
 
 	// Here the default SExternalImage would copy the file using source control, but we don't want that
 	// since plugins are .gitignored and that causes an error from the source control plugin.
-	if(!FPlatformFileManager::Get().GetPlatformFile().CopyFile(*NewTargetImage, *InChosenImage))
+    IFileManager::Get().MakeDirectory(*FPaths::GetPath(NewTargetImage), true);
+	if(!FPaths::IsSamePath(NewTargetImage, InChosenImage) && !FPlatformFileManager::Get().GetPlatformFile().CopyFile(*NewTargetImage, *InChosenImage))
 	{
 		return false;
 	}

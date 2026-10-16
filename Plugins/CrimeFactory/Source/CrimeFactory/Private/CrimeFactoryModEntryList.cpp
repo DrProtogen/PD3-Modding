@@ -2,6 +2,11 @@
 #include "CrimeFactory.h"
 #include "CrimeFactoryModEntry.h"
 #include "LegacyModImporter.h"
+#include "Metadata/CrimeFactoryMetadataSync.h"
+#include "PluginUtils.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "Misc/ScopeExit.h"
 #include "Interfaces/IPluginManager.h"
 #include "Slate.h"
 #include "HAL/FileManager.h"
@@ -45,6 +50,13 @@ void SCrimeFactoryModEntryList::Construct(const FArguments& Args) {
                 .Text(LOCTEXT("PackageModUncheckAll", "Check None"))
                 .OnClicked(this, &SCrimeFactoryModEntryList::UncheckAllMods)
             ]
+            + SWrapBox::Slot()
+            [
+                SNew(SButton)
+                .Text(LOCTEXT("RefreshMods", "Refresh Mods"))
+                .ToolTipText(LOCTEXT("RefreshModsHelp", "Rescan the Mods folder, load new content-only plugins, and refresh metadata and icons. Code plugins may require an editor restart."))
+                .OnClicked(this, &SCrimeFactoryModEntryList::RefreshMods)
+            ]
         ]
 
         // Creation/import actions get their own responsive row so they remain
@@ -74,6 +86,9 @@ void SCrimeFactoryModEntryList::Construct(const FArguments& Args) {
                 .OnClicked(this, &SCrimeFactoryModEntryList::CreateMod)
             ]
         ]
+
+        + SVerticalBox::Slot().AutoHeight()
+        [ SNew(STextBlock).Text_Lambda([this] { return RefreshStatus; }).AutoWrapText(true) ]
 
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
@@ -120,6 +135,9 @@ bool DoesPluginHaveRuntime(const IPlugin& Plugin) {
 }
 
 void SCrimeFactoryModEntryList::LoadMods() {
+    if (bLoadingMods) return;
+    TGuardValue<bool> Guard(bLoadingMods, true);
+    int32 LoadErrors = 0;
     Mods.Empty();
 
     const FString ProjectModsDir =
@@ -159,6 +177,7 @@ void SCrimeFactoryModEntryList::LoadMods() {
                 DescriptorFile,
                 &AddFailure))
         {
+            ++LoadErrors;
             UE_LOG(
                 LogCrimeFactory,
                 Warning,
@@ -204,7 +223,7 @@ void SCrimeFactoryModEntryList::LoadMods() {
                 ESearchCase::IgnoreCase);
 
         if (bLivesInProjectMods &&
-            !IFileManager::Get().DirectoryExists(*PluginBaseDir))
+            !IFileManager::Get().FileExists(*Plugin->GetDescriptorFileName()))
         {
             continue;
         }
@@ -218,6 +237,46 @@ void SCrimeFactoryModEntryList::LoadMods() {
             
             const bool bHasRuntime = DoesPluginHaveRuntime(Plugin.Get());
             if (bHasRuntime) {
+                if (bLivesInProjectMods)
+                {
+                    FString Error;
+                    if (!CrimeFactoryMetadataSync::ReloadDescriptor(*Plugin, Error))
+                    {
+                        ++LoadErrors;
+                        UE_LOG(LogCrimeFactory, Error, TEXT("Cannot refresh %s: %s"), *Plugin->GetName(), *Error);
+                    }
+                }
+                if (bLivesInProjectMods && !FPluginUtils::FindLoadedPlugin(Plugin->GetDescriptorFileName()).IsValid() && Plugin->GetDescriptor().Modules.IsEmpty())
+                {
+                    FText Failure;
+                    FPluginUtils::FLoadPluginParams Params;
+                    Params.bEnablePluginInProject = true;
+                    Params.bUpdateProjectPluginSearchPath = true;
+                    Params.bSynchronousAssetsScan = true;
+                    Params.OutFailReason = &Failure;
+                    if (!Plugin->GetDescriptor().bExplicitlyLoaded)
+                    {
+                        // LoadPlugin only accepts explicitly-loaded descriptors. Normal content
+                        // mods copied into Mods use the same native mount path as newly created mods.
+                        IPluginManager::Get().MountNewlyCreatedPlugin(Plugin->GetName());
+                        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get()
+                            .ScanPathsSynchronous({Plugin->GetMountedAssetPath()}, true);
+                    }
+                    else if (!FPluginUtils::LoadPlugin(Plugin->GetDescriptorFileName(), Params))
+                    {
+                        ++LoadErrors;
+                        UE_LOG(LogCrimeFactory, Warning, TEXT("Cannot load mod %s: %s"), *Plugin->GetName(), *Failure.ToString());
+                    }
+                }
+                if (bLivesInProjectMods && FPluginUtils::FindLoadedPlugin(Plugin->GetDescriptorFileName()).IsValid())
+                {
+                    FString Error;
+                    if (!CrimeFactoryMetadataSync::Synchronize(*Plugin, false, Error))
+                    {
+                        ++LoadErrors;
+                        UE_LOG(LogCrimeFactory, Error, TEXT("%s: %s"), *Plugin->GetName(), *Error);
+                    }
+                }
                 Mods.Add(Plugin);
             }
         }
@@ -225,7 +284,21 @@ void SCrimeFactoryModEntryList::LoadMods() {
     Mods.Sort([](const TSharedRef<IPlugin> Plugin1, const TSharedRef<IPlugin> Plugin2) {
         return Plugin1->GetName() < Plugin2->GetName();
     });
+    RefreshStatus = LoadErrors ? FText::Format(LOCTEXT("RefreshProblems", "{0} mod(s). {1} refresh problem(s); see Output Log. New code plugins may require an editor restart."), Mods.Num(), LoadErrors)
+        : FText::Format(LOCTEXT("RefreshCount", "{0} mod(s) discovered."), Mods.Num());
     Filter(LastFilter);
+}
+
+FReply SCrimeFactoryModEntryList::RefreshMods()
+{
+    // AddToPluginsList discovers exact new descriptors without replacing live IPlugin instances.
+    LoadMods();
+    return FReply::Handled();
+}
+
+bool SCrimeFactoryModEntryList::ContainsMod(const FString& Name) const
+{
+    return Mods.ContainsByPredicate([&Name](const auto& Plugin) { return Plugin->GetName() == Name; });
 }
 
 bool PluginMatchesSearchTokens(const IPlugin& Plugin, const TArray<FString>& Tokens) {

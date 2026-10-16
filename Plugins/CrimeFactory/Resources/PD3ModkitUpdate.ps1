@@ -254,91 +254,72 @@ function Complete-ActiveProcess {
 $windowXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PD3 Modkit Updater"
-        Width="560"
-        Height="320"
-        ResizeMode="NoResize"
-        WindowStartupLocation="CenterScreen"
-        ShowInTaskbar="True"
-        Topmost="True"
-        Background="#202020"
-        Foreground="#F2F2F2"
-        FontFamily="Segoe UI">
+        Title="CrimeFactory - PD3 Modkit Updater" Width="820" Height="660" MinWidth="680" MinHeight="480"
+        ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True" Topmost="True"
+        Background="#242424" Foreground="#DDDDDD" FontFamily="Segoe UI" FontSize="13">
+    <Window.Resources>
+        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#DDDDDD"/></Style>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#383838"/><Setter Property="Foreground" Value="#EEEEEE"/>
+            <Setter Property="BorderBrush" Value="#111111"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/><Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#4B4B4B"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#0069CB"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+        </Style>
+    </Window.Resources>
     <Grid Margin="24">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/><RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
-        <TextBlock Grid.Row="0"
-                   Text="Updating PD3 Modkit"
-                   FontSize="22"
-                   FontWeight="SemiBold"
-                   Margin="0,0,0,10"/>
-
-        <TextBlock Grid.Row="1"
-                   Name="WarningText"
-                   Text="Please do not reopen the project while the update is in progress."
-                   Foreground="#CFCFCF"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,20"/>
-
-        <ProgressBar Grid.Row="2"
-                     Name="ProgressBar"
-                     Height="12"
-                     IsIndeterminate="True"
-                     Margin="0,0,0,18"/>
-
-        <TextBlock Grid.Row="3"
-                   Name="StatusText"
-                   Text="Waiting for Unreal Editor to close..."
-                   FontSize="14"
-                   FontWeight="SemiBold"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,8"/>
-
-        <TextBlock Grid.Row="4"
-                   Name="DetailText"
-                   Text="The update will begin automatically as soon as Unreal Editor has fully exited."
-                   Foreground="#AFAFAF"
-                   TextWrapping="Wrap"/>
-
-        <StackPanel Grid.Row="5"
-                    Name="ButtonPanel"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Visibility="Collapsed"
-                    Margin="0,20,0,0">
-            <Button Name="OpenBackupButton"
-                    Content="Open Content Backup"
-                    MinWidth="140"
-                    Height="30"
-                    Margin="0,0,8,0"
-                    Padding="12,0"
-                    Visibility="Collapsed"/>
-            <Button Name="ViewLogButton"
-                    Content="View Update Log"
-                    MinWidth="120"
-                    Height="30"
-                    Margin="0,0,8,0"
-                    Padding="12,0"/>
-            <Button Name="ReopenButton"
-                    Content="Reopen Project"
-                    MinWidth="110"
-                    Height="30"
-                    Margin="0,0,8,0"
-                    Padding="12,0"
-                    Visibility="Collapsed"/>
-            <Button Name="CloseButton"
-                    Content="Close"
-                    MinWidth="82"
-                    Height="30"
-                    Padding="12,0"/>
+        <StackPanel Grid.Row="0" Margin="0,0,0,18">
+            <TextBlock Text="CRIMEFACTORY  /  MODKIT UPDATE" FontSize="11" Foreground="#AAAAAA"/>
+            <TextBlock Text="PD3 Modkit" FontSize="32" FontWeight="Bold" Margin="0,8,0,8"/>
+            <TextBlock Name="StatusText" Text="Waiting for Unreal Editor to close..." FontWeight="SemiBold" Foreground="#FFBC00" TextWrapping="Wrap"/>
         </StackPanel>
+        <UniformGrid Grid.Row="1" Columns="3" Margin="0,0,0,18">
+            <Border Background="#1B1B1B" Padding="16,12" Margin="0,0,6,0"><StackPanel>
+                <TextBlock Name="BranchText" Text="Loading" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="Branch" Margin="0,5,0,0" Foreground="#AAAAAA"/>
+            </StackPanel></Border>
+            <Border Background="#1B1B1B" Padding="16,12" Margin="0,0,6,0"><StackPanel>
+                <TextBlock Name="BackupStatusText" Text="Pending" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="Content backup" Margin="0,5,0,0" Foreground="#AAAAAA"/>
+            </StackPanel></Border>
+            <Border Background="#1B1B1B" Padding="16,12"><StackPanel>
+                <TextBlock Text="After update" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="Automatic project reopening" Margin="0,5,0,0" Foreground="#AAAAAA" TextWrapping="Wrap"/>
+            </StackPanel></Border>
+        </UniformGrid>
+        <StackPanel Grid.Row="2" Margin="0,0,0,14">
+            <TextBlock Name="WarningText" Text="Please do not reopen the project while the update is in progress." TextWrapping="Wrap" Margin="0,0,0,12"/>
+            <ProgressBar Name="ProgressBar" Height="8" IsIndeterminate="True" Foreground="#0070E0" Background="#1B1B1B" BorderThickness="0"/>
+        </StackPanel>
+        <Grid Grid.Row="3">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <TextBlock Text="Current activity" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <TextBox Grid.Row="1" Name="DetailText" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                     Text="The update will begin automatically as soon as Unreal Editor has fully exited."
+                     Background="#1B1B1B" Foreground="#DDDDDD" BorderThickness="0" Padding="12"/>
+        </Grid>
+        <WrapPanel Grid.Row="4" Name="ButtonPanel" HorizontalAlignment="Right" Visibility="Collapsed" Margin="0,18,0,0">
+            <Button Name="CopyReportButton" Content="Copy report"/>
+            <Button Name="OpenBackupButton" Content="Open Content backup" Visibility="Collapsed"/>
+            <Button Name="ViewLogButton" Content="View update log"/>
+            <Button Name="ReopenButton" Content="Reopen project" Background="#0070E0" Visibility="Collapsed"/>
+            <Button Name="CloseButton" Content="Close"/>
+        </WrapPanel>
     </Grid>
 </Window>
 "@
@@ -354,6 +335,8 @@ catch {
     exit 11
 }
 
+$window.FindName('BranchText').Text = $BranchName
+$backupStatusText = $window.FindName('BackupStatusText')
 $progressBar = $window.FindName('ProgressBar')
 $statusText = $window.FindName('StatusText')
 $detailText = $window.FindName('DetailText')
@@ -372,6 +355,9 @@ function Set-Status {
 
     $statusText.Text = $Status
     $detailText.Text = $Detail
+    if ($script:BackupCreated) { $backupStatusText.Text = 'Ready'; $backupStatusText.Foreground = '#20DB5D' }
+    elseif (-not (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $ProjectFile) 'Content'))) { $backupStatusText.Text = 'No Content folder' }
+    else { $backupStatusText.Text = 'Pending' }
 }
 
 function Show-Failure {
@@ -383,6 +369,7 @@ function Show-Failure {
 
     Write-UpdateLog "$Status $Detail"
     $script:State = 'Failed'
+    $statusText.Foreground = '#FF4040'
     $script:AllowClose = $true
     $progressBar.IsIndeterminate = $false
     $progressBar.Value = 0
@@ -774,6 +761,7 @@ function Complete-UpdateAndScheduleReopen {
         Write-UpdateLog "Content safety backup: $($script:BackupRoot)"
     }
 
+    $statusText.Foreground = '#20DB5D'
     Set-Status -Status 'Update complete.' -Detail 'Your Content backup is safe and local changes have been restored. Reopening PD3 Modkit...'
     $warningText.Text = 'The update was installed successfully. The project will reopen automatically.'
     $script:ReopenAt = [DateTime]::UtcNow.AddMilliseconds(900)
@@ -803,6 +791,12 @@ $window.Add_ContentRendered({
             $window.Close()
         }
     }
+})
+
+$window.FindName('CopyReportButton').Add_Click({
+    try {
+        [System.Windows.Clipboard]::SetText(($statusText.Text + "`r`n`r`n" + $detailText.Text + "`r`n`r`nUpdate log: " + $LogPath + "`r`nBackup: " + $script:BackupRoot))
+    } catch { Write-UpdateLog "Could not copy the report: $($_.Exception.Message)" }
 })
 
 $openBackupButton.Add_Click({

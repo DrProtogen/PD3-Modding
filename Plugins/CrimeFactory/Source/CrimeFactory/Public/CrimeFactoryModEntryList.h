@@ -18,6 +18,9 @@ class SCrimeFactoryModEntryList : public SCompoundWidget {
 	 * Updates the mod list.
 	 */
 	void LoadMods();
+    FReply RefreshMods();
+    int32 GetModCount() const { return Mods.Num(); }
+    bool ContainsMod(const FString& Name) const;
 
 	/**
 	 * Filters the mods for the given string
@@ -46,6 +49,8 @@ private:
 	FString LastFilter;
 	bool bShowEngine = false;
 	bool bShowProject = false;
+    bool bLoadingMods = false;
+    FText RefreshStatus;
 
 	FReply PackageAllMods();
 	FReply CheckAllMods();

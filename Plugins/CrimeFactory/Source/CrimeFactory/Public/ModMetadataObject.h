@@ -66,6 +66,7 @@ public:
 
 	/** Path to this this mod's icon */
 	FString TargetIconPath;
+	FSimpleDelegate OnIconChanged;
 
 	/** The default Unreal Engine Version field. This is set automatically to match the first section of SemVersion */
 	UPROPERTY(VisibleAnywhere, Category = "Version")
@@ -94,6 +95,24 @@ public:
 	/** The name(s) of the author(s) of the mod */
 	UPROPERTY(EditAnywhere, Category = "Details")
 	FString CreatedBy;
+
+	/** Exact author entries shared with the PDML metadata DA. */
+	UPROPERTY(EditAnywhere, Category = "Details")
+	TArray<FString> ModAuthors;
+
+	UPROPERTY(EditAnywhere, Category = "Details")
+	FString ModPageURL;
+
+	/** Display name from the DA's Mod Environment enum (for example Client). */
+	UPROPERTY(EditAnywhere, Category = "PDML")
+	FString ModEnvironment;
+
+	UPROPERTY(EditAnywhere, Category = "PDML")
+	FString ModLoaderVersion;
+
+	/** Resolved from the normal plugin Dependencies list; PDML and base plugins are excluded. */
+	UPROPERTY(VisibleAnywhere, Category = "PDML", meta = (DisplayName = "Resolved Metadata Dependencies", ToolTip = "Read-only summary. Edit plugin Dependencies below; CrimeFactory resolves each mod to its metadata DA. PDML is excluded."))
+	TArray<FString> ModDependencies;
 
 	/** URL of the author(s) of the mod. Could be a GitHub link for example. This is optional. */
 	UPROPERTY(EditAnywhere, Category = "Details")

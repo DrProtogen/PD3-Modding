@@ -41,6 +41,9 @@ public:
     UPROPERTY(EditAnywhere, Config, Category = "General|PAYDAY 3", meta = (DisplayName = "Launch Game After Packing"))
     ECrimeFactoryStartGameType LaunchGameAfterPacking = ECrimeFactoryStartGameType::NONE;
 
+    UPROPERTY(EditAnywhere, Config, Category = "General|Export", meta = (DisplayName = "Additional ZIP Export Folder", ToolTip = "Optional extra ZIP destination, with a subfolder per platform. The standard Saved/ArchivedPlugins archive is always retained. Relative paths are resolved from the project directory."))
+    FDirectoryPath ZipExportDirectory;
+
     /* Internal state ----------------------------------------------------------------------- */
 
     UPROPERTY(Config)
