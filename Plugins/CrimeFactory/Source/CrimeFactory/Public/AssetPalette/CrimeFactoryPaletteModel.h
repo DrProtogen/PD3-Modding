@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "AssetRegistry/AssetData.h"
-#include "CrimeFactoryPaletteSettings.h"
+#include "Settings/CrimeFactoryPaletteSettings.h"
 
 class FDragDropOperation;
 class IAssetRegistry;

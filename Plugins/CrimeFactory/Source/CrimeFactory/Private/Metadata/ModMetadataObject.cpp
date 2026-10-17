@@ -1,6 +1,6 @@
-#include "ModMetadataObject.h"
+#include "Metadata/ModMetadataObject.h"
 
-#include "CrimeFactory.h"
+#include "Editor/CrimeFactory.h"
 #include "PluginDescriptor.h"
 #include "PluginReferenceDescriptor.h"
 #include "Misc/Paths.h"
@@ -12,7 +12,7 @@
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
 #include "DetailCategoryBuilder.h"
-#include "SExternalImage.h"
+#include "Widgets/SExternalImage.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 

@@ -1,7 +1,7 @@
-#include "LegacyModImporter.h"
+#include "ModCreation/LegacyModImporter.h"
 
-#include "CrimeFactory.h"
-#include "ModWizardDefinition.h"
+#include "Editor/CrimeFactory.h"
+#include "ModCreation/ModWizardDefinition.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"

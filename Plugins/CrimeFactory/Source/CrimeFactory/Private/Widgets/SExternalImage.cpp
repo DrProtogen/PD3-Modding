@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "SExternalImage.h"
+#include "Widgets/SExternalImage.h"
 
 #include "IExternalImagePickerModule.h"
 #include "HAL/FileManager.h"

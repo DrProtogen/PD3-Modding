@@ -1,5 +1,5 @@
-#include "CrimeFactoryWidget.h"
-#include "CrimeFactoryModEntryList.h"
+#include "ModBrowser/CrimeFactoryWidget.h"
+#include "ModBrowser/CrimeFactoryModEntryList.h"
 #include "ISettingsModule.h"
 #include "Modules/ModuleManager.h"
 #include "Styling/AppStyle.h"
@@ -40,7 +40,7 @@ void SCrimeFactoryWidget::Construct(const FArguments& InArgs)
                     .OnClicked_Lambda([]()
                     {
                         FModuleManager::LoadModuleChecked<ISettingsModule>(TEXT("Settings"))
-                            .ShowViewer(TEXT("Project"), TEXT("Plugins"), TEXT("CrimeFactory"));
+                            .ShowViewer(TEXT("Project"), TEXT("CrimeFactory"), TEXT("Settings"));
                         return FReply::Handled();
                     })
                     [

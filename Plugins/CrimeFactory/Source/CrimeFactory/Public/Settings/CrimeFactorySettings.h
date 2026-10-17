@@ -13,10 +13,9 @@ enum class ECrimeFactoryStartGameType : uint8 {
 };
 
 /**
- * Single Project Settings object for all CrimeFactory configuration.
+ * Per-user CrimeFactory packaging preferences.
  *
- * It is registered manually under Project Settings -> Plugins -> CrimeFactory so the editor shows
- * one CrimeFactory page with normal expandable categories.
+ * Registered under Project Settings -> CrimeFactory -> General, alongside Asset Palette.
  */
 UCLASS(config = EditorPerProjectUserSettings)
 class CRIMEFACTORY_API UCrimeFactorySettings : public UObject

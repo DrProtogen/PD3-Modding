@@ -1,8 +1,8 @@
-#include "CrimeFactoryModEntry.h"
-#include "CrimeFactoryPALCommandlet.h"
-#include "CrimeFactory.h"
-#include "CrimeFactorySettings.h"
-#include "CrimeFactoryStyle.h"
+#include "ModBrowser/CrimeFactoryModEntry.h"
+#include "Packaging/CrimeFactoryPALCommandlet.h"
+#include "Editor/CrimeFactory.h"
+#include "Settings/CrimeFactorySettings.h"
+#include "Editor/CrimeFactoryStyle.h"
 #include "Packaging/CrimeFactoryPackagingUI.h"
 #include "Packaging/CrimeFactoryGameProcess.h"
 #include "Metadata/CrimeFactoryMetadataSync.h"
@@ -11,7 +11,7 @@
 #include "ISourceControlModule.h"
 #include "ISourceControlProvider.h"
 #include "ISourceControlOperation.h"
-#include "ModMetadataObject.h"
+#include "Metadata/ModMetadataObject.h"
 #include "SourceControlOperations.h"
 #include "Async/Async.h"
 #include "IUATHelperModule.h"
@@ -2483,8 +2483,8 @@ namespace
 		{
 			TEXT("CrimeFactory.Automation.csproj"),
 			TEXT("CrimeFactory.Automation.csproj.props"),
-			TEXT("PackagePlugin.cs"),
-            TEXT("CrimeFactoryZipExport.cs")
+			TEXT("Packaging/PackagePlugin.cs"),
+            TEXT("Packaging/CrimeFactoryZipExport.cs")
 		};
 
 		for (const TCHAR* SourceFile : SourceFiles)
@@ -2520,8 +2520,8 @@ namespace
 		{
 			TEXT("CrimeFactory.Automation.csproj"),
 			TEXT("CrimeFactory.Automation.csproj.props"),
-			TEXT("PackagePlugin.cs"),
-            TEXT("CrimeFactoryZipExport.cs")
+			TEXT("Packaging/PackagePlugin.cs"),
+            TEXT("Packaging/CrimeFactoryZipExport.cs")
 		};
 
 		uint32 Fingerprint = 2166136261u;
@@ -2584,7 +2584,7 @@ namespace
 		}
 
 		const FString PackagePluginSource =
-			FPaths::Combine(ScriptDir, TEXT("PackagePlugin.cs"));
+			FPaths::Combine(ScriptDir, TEXT("Packaging/PackagePlugin.cs"));
 
 		if (!FileManager.FileExists(*PackagePluginSource))
 		{

@@ -1,4 +1,4 @@
-#include "CrimeFactoryStyle.h"
+#include "Editor/CrimeFactoryStyle.h"
 #include "Interfaces/IPluginManager.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/AppStyle.h"

@@ -1,10 +1,9 @@
 #include "AssetPalette/CrimeFactoryAssetPalette.h"
 #include "AssetPalette/SCrimeFactoryAssetPalette.h"
 #include "AssetPalette/CrimeFactoryActorThumbnail.h"
-#include "CrimeFactoryPaletteSettings.h"
+#include "Settings/CrimeFactoryPaletteSettings.h"
 
 #include "Framework/Docking/TabManager.h"
-#include "ISettingsContainer.h"
 #include "ISettingsModule.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/SNullWidget.h"
@@ -17,9 +16,6 @@ void CrimeFactoryAssetPalette::Register()
 {
     CrimeFactoryActorThumbnails::Register();
     ISettingsModule& Settings = FModuleManager::LoadModuleChecked<ISettingsModule>("Settings");
-    if (auto Container = Settings.GetContainer("Project"))
-        Container->DescribeCategory("CrimeFactory", LOCTEXT("Category", "CrimeFactory"),
-            LOCTEXT("CategoryDescription", "CrimeFactory level authoring tools."));
     Settings.RegisterSettings("Project", "CrimeFactory", "AssetPalette",
         LOCTEXT("Title", "Asset Palette"), LOCTEXT("SettingsDescription", "Shared categories and assets for the Asset Palette window."),
         GetMutableDefault<UCrimeFactoryPaletteSettings>());

@@ -1,5 +1,5 @@
-#include "CrimeFactoryCommands.h"
-#include "CrimeFactoryStyle.h"
+#include "Editor/CrimeFactoryCommands.h"
+#include "Editor/CrimeFactoryStyle.h"
 
 #define LOCTEXT_NAMESPACE "FCrimeFactoryModule"
 

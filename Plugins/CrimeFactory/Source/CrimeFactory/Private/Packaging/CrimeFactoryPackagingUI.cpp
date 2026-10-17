@@ -1,6 +1,6 @@
 #include "Packaging/CrimeFactoryPackagingUI.h"
 
-#include "CrimeFactory.h"
+#include "Editor/CrimeFactory.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformApplicationMisc.h"

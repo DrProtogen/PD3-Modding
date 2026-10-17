@@ -1,4 +1,4 @@
-#include "PD3ModkitUpdater.h"
+#include "Updater/PD3ModkitUpdater.h"
 #include "Packaging/CrimeFactoryUpdaterUI.h"
 
 #include "Async/Async.h"

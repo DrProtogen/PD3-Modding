@@ -1,7 +1,7 @@
 #include "Metadata/CrimeFactoryMetadataSync.h"
 
-#include "CrimeFactory.h"
-#include "ModMetadataObject.h"
+#include "Editor/CrimeFactory.h"
+#include "Metadata/ModMetadataObject.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -24,8 +24,8 @@
 
 namespace
 {
-    // Keys deliberately match the PDA_ModMeta variables, including Blueprint variable GUID suffixes.
-    const TCHAR* Keys[] = {TEXT("ModID"), TEXT("ModName"), TEXT("ModVersion"), TEXT("ModDescription"),
+    // CrimeFactoryMetadataFieldKeys deliberately match the PDA_ModMeta variables, including Blueprint variable GUID suffixes.
+    const TCHAR* CrimeFactoryMetadataFieldKeys[] = {TEXT("ModID"), TEXT("ModName"), TEXT("ModVersion"), TEXT("ModDescription"),
         TEXT("ModAuthors"), TEXT("ModPageURL"), TEXT("ModEnvironment"), TEXT("ModLoaderVersion"), TEXT("Dependencies")};
     struct FState
     {
@@ -35,7 +35,7 @@ namespace
     };
     TMap<FString, FState> States;
     TSet<FString> Pending;
-    FDelegateHandle PropertyHandle, TransactionHandle, LoadHandle, PluginHandle, SaveHandle;
+    FDelegateHandle MetadataPropertyChangedHandle, TransactionHandle, LoadHandle, PluginHandle, SaveHandle;
     FTSTicker::FDelegateHandle TickHandle;
     bool bSynchronizing = false;
     TSharedPtr<IPlugin> PluginForAsset(UObject* Asset);
@@ -128,7 +128,7 @@ namespace
     TSharedRef<FJsonObject> ReadAsset(UObject& Asset)
     {
         const auto Result = MakeShared<FJsonObject>();
-        for (const TCHAR* Key : Keys)
+        for (const TCHAR* Key : CrimeFactoryMetadataFieldKeys)
         {
             FProperty* Field = FindField(Asset, Key);
             if (!Field) continue;
@@ -565,7 +565,7 @@ void CrimeFactoryMetadataSync::FlushPending()
 void CrimeFactoryMetadataSync::Initialize()
 {
     if (IsRunningCommandlet() || TickHandle.IsValid()) return;
-    PropertyHandle = FCoreUObjectDelegates::OnObjectPropertyChanged.AddStatic(&OnChanged);
+    MetadataPropertyChangedHandle = FCoreUObjectDelegates::OnObjectPropertyChanged.AddStatic(&OnChanged);
     TransactionHandle = FCoreUObjectDelegates::OnObjectTransacted.AddStatic(&OnTransacted);
     LoadHandle = FCoreUObjectDelegates::OnAssetLoaded.AddStatic(&OnLoaded);
     SaveHandle = FCoreUObjectDelegates::OnObjectPreSave.AddLambda([](UObject* Object, FObjectPreSaveContext Context)
@@ -612,7 +612,7 @@ void CrimeFactoryMetadataSync::Shutdown()
 {
     FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
     TickHandle.Reset();
-    FCoreUObjectDelegates::OnObjectPropertyChanged.Remove(PropertyHandle);
+    FCoreUObjectDelegates::OnObjectPropertyChanged.Remove(MetadataPropertyChangedHandle);
     FCoreUObjectDelegates::OnObjectTransacted.Remove(TransactionHandle);
     FCoreUObjectDelegates::OnAssetLoaded.Remove(LoadHandle);
     FCoreUObjectDelegates::OnObjectPreSave.Remove(SaveHandle);

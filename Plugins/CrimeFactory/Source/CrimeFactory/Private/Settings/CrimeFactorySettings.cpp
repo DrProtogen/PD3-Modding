@@ -1,4 +1,4 @@
-﻿#include "CrimeFactorySettings.h"
+﻿#include "Settings/CrimeFactorySettings.h"
 
 #include "Misc/ConfigCacheIni.h"
 #include "UObject/UnrealType.h"

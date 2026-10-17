@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CrimeFactoryModEntryList.h"
+#include "ModBrowser/CrimeFactoryModEntryList.h"
 #include "Slate.h"
 
 class SCrimeFactoryWidget : public SCompoundWidget {

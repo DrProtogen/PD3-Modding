@@ -1,18 +1,20 @@
-#include "CrimeFactory.h"
-#include "CrimeFactoryStyle.h"
-#include "CrimeFactoryCommands.h"
-#include "CrimeFactorySettings.h"
-#include "CrimeFactoryWidget.h"
+#include "Editor/CrimeFactory.h"
+#include "Editor/CrimeFactoryStyle.h"
+#include "Editor/CrimeFactoryCommands.h"
+#include "Settings/CrimeFactorySettings.h"
+#include "ModBrowser/CrimeFactoryWidget.h"
 #include "AssetPalette/CrimeFactoryAssetPalette.h"
-#include "PD3ModkitUpdater.h"
+#include "Updater/PD3ModkitUpdater.h"
 #include "Metadata/CrimeFactoryMetadataSync.h"
 #include "ContentBrowserModule.h"
+#include "ContentBrowser/CrimeFactoryCookStateFilter.h"
 #include "ISettingsModule.h"
+#include "ISettingsContainer.h"
 #include "ISettingsSection.h"
 #include "LevelEditor.h"
 #include "ToolMenus.h"
 #include "IPluginBrowser.h"
-#include "ModWizardDefinition.h"
+#include "ModCreation/ModWizardDefinition.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/AssetManager.h"
@@ -35,6 +37,8 @@ DEFINE_LOG_CATEGORY(LogCrimeFactory)
 const FName FCrimeFactoryModule::ModCreatorTabName(TEXT("ModCreator"));
 
 void FCrimeFactoryModule::StartupModule() {
+    // Native Content Browser filter discovery enumerates extension class defaults.
+    GetDefault<UCrimeFactoryCookStateFilterExtension>();
     CrimeFactoryMetadataSync::Initialize();
 #if __has_include("PD3CookedEditorSettings.h")
     CookedEditorSettingsChangedHandle = GetMutableDefault<UPD3CookedEditorSettings>()->OnSettingChanged().AddStatic(
@@ -191,34 +195,33 @@ TSharedRef<SDockTab> FCrimeFactoryModule::HandleSpawnModCreatorTab(const FSpawnT
 }
 
 void FCrimeFactoryModule::RegisterSettings() const {
-    if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>(TEXT("Settings"))) {
-        // Remove the old CrimeFactory -> Settings registration if this module is being reloaded in
-        // an editor session that previously had the pre-unified settings layout registered.
-        SettingsModule->UnregisterSettings(TEXT("Project"), TEXT("CrimeFactory"), TEXT("Settings"));
+    ISettingsModule& SettingsModule = FModuleManager::LoadModuleChecked<ISettingsModule>(TEXT("Settings"));
+    // Both settings pages share the CrimeFactory category. Remove the former Plugins entry.
+    SettingsModule.UnregisterSettings(TEXT("Project"), TEXT("Plugins"), TEXT("CrimeFactory"));
+    if (auto Container = SettingsModule.GetContainer(TEXT("Project")))
+        Container->DescribeCategory(TEXT("CrimeFactory"), LOCTEXT("CrimeFactoryCategory", "CrimeFactory"),
+            LOCTEXT("CrimeFactoryCategoryDescription", "CrimeFactory mod packaging and level authoring tools."));
 
-        // Register CrimeFactory like a normal editor plugin: one page under Project Settings -> Plugins.
-        // The UObject property categories provide the CrimeFactory settings sections within the page.
-        ISettingsSectionPtr SettingsSection = SettingsModule->RegisterSettings(
-            TEXT("Project"), TEXT("Plugins"), TEXT("CrimeFactory"),
-            LOCTEXT("CrimeFactorySettingsName", "CrimeFactory"),
-            LOCTEXT("CrimeFactorySettingsDescription", "CrimeFactory settings for PAYDAY 3 modding and packaging."),
-            UCrimeFactorySettings::Get()
-        );
+    ISettingsSectionPtr SettingsSection = SettingsModule.RegisterSettings(
+        TEXT("Project"), TEXT("CrimeFactory"), TEXT("Settings"),
+        LOCTEXT("CrimeFactorySettingsName", "General"),
+        LOCTEXT("CrimeFactorySettingsDescription", "CrimeFactory settings for PAYDAY 3 modding and packaging."),
+        UCrimeFactorySettings::Get()
+    );
 
-        // Persist changes made through Project Settings.
-        if (SettingsSection.IsValid()) {
-            SettingsSection->OnModified().BindLambda([](){
-                UCrimeFactorySettings::Get()->SaveSettings();
-                return true;
-            });
-        }
+    // Persist changes made through Project Settings.
+    if (SettingsSection.IsValid()) {
+        SettingsSection->OnModified().BindLambda([](){
+            UCrimeFactorySettings::Get()->SaveSettings();
+            return true;
+        });
     }
 }
 
 void FCrimeFactoryModule::UnregisterSettings() const {
     if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>(TEXT("Settings"))) {
         SettingsModule->UnregisterSettings(TEXT("Project"), TEXT("Plugins"), TEXT("CrimeFactory"));
-        // Also clean up the legacy registration path for hot-reload/live-coding sessions.
+        // General page registered alongside Asset Palette in the CrimeFactory category.
         SettingsModule->UnregisterSettings(TEXT("Project"), TEXT("CrimeFactory"), TEXT("Settings"));
     }
 }

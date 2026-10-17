@@ -1,6 +1,6 @@
 #include "Packaging/CrimeFactoryGameProcess.h"
 
-#include "CrimeFactory.h"
+#include "Editor/CrimeFactory.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/App.h"

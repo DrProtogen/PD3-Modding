@@ -13,23 +13,28 @@ public class CrimeFactory : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			// Required by the editor interfaces declared in Public headers.
+			"Projects",
+			"Slate",
+			"SlateCore",
+			"UnrealEd",
+			"ExternalImagePicker",
+			"PropertyEditor",
+			"PluginBrowser",
+			"ContentBrowser",
+			"ContentBrowserData",
+			"DeveloperSettings",
 		});
 		
 		PrivateDependencyModuleNames.AddRange(new[] {
 			"Json",
-			"Projects",
 			"InputCore",
-			"UnrealEd",
 			"LevelEditor",
-			"Slate",
-			"SlateCore",
-			"ExternalImagePicker",
 			"EditorStyle",
 			"EditorFramework",
 			"RenderCore",
 			"ImageCore",
 			"RHI",
-			"PluginBrowser",
 			"UATHelper",
 			"DesktopPlatform",
 			"AssetRegistry",
@@ -37,10 +42,8 @@ public class CrimeFactory : ModuleRules
 			"EditorScriptingUtilities",
 			"ApplicationCore",
 			"PluginUtils",
-			"ContentBrowser",
 			"ToolMenus",
-			"Settings",
-			"DeveloperSettings"
+			"Settings"
 		});
 	}
 }

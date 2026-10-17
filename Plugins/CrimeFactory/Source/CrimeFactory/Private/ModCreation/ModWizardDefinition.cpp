@@ -1,7 +1,7 @@
-#include "ModWizardDefinition.h"
+#include "ModCreation/ModWizardDefinition.h"
 
-#include "CrimeFactory.h"
-#include "CrimeFactorySettings.h"
+#include "Editor/CrimeFactory.h"
+#include "Settings/CrimeFactorySettings.h"
 #include "Dom/JsonObject.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonReader.h"
