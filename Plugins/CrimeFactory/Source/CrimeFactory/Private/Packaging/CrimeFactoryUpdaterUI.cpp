@@ -1,6 +1,7 @@
 #include "Packaging/CrimeFactoryUpdaterUI.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Docking/TabManager.h"
 #include "Misc/App.h"
 #include "HAL/PlatformProcess.h"
 #include "Widgets/Input/SHyperlink.h"
@@ -93,9 +94,20 @@ TSharedRef<SWidget> CrimeFactoryUpdaterUI::MakeContent(const FCrimeFactoryUpdate
     ];
 }
 
-bool CrimeFactoryUpdaterUI::Present(const FCrimeFactoryUpdatePresentation& Data)
+bool CrimeFactoryUpdaterUI::CanPresent()
 {
     if (IsRunningCommandlet() || FApp::IsUnattended() || !FSlateApplication::IsInitialized() || !FSlateApplication::Get().CanDisplayWindows()) return false;
+    const FSlateApplication& Slate = FSlateApplication::Get();
+    if (GIsSlowTask || Slate.IsTicking() || Slate.IsProcessingInput() || Slate.IsDragDropping() || Slate.GetActiveModalWindow().IsValid()) return false;
+    const TSharedPtr<SWindow> RootWindow = FGlobalTabmanager::Get()->GetRootWindow();
+    return RootWindow.IsValid() && RootWindow->GetNativeWindow().IsValid() && RootWindow->IsVisible()
+        && !RootWindow->IsWindowMinimized() && !Slate.IsWindowInDestroyQueue(RootWindow.ToSharedRef());
+}
+
+bool CrimeFactoryUpdaterUI::Present(const FCrimeFactoryUpdatePresentation& Data)
+{
+    if (!CanPresent()) return false;
+    const TSharedPtr<SWindow> RootWindow = FGlobalTabmanager::Get()->GetRootWindow();
     const auto Decision = MakeShared<bool>(false);
     const auto Window = SNew(SWindow).Title(NSLOCTEXT("CrimeFactory", "UpdaterTitle", "CrimeFactory · PD3 Modkit Updater"))
         .ClientSize(FVector2D(820, 700)).MinWidth(620).MinHeight(440).SupportsMaximize(true).SupportsMinimize(false);
@@ -106,6 +118,8 @@ bool CrimeFactoryUpdaterUI::Present(const FCrimeFactoryUpdatePresentation& Data)
         *Decision = bAllowed;
         Close.ExecuteIfBound();
     }), Close));
-    FSlateApplication::Get().AddModalWindow(Window, FSlateApplication::Get().GetActiveTopLevelWindow());
+    // Active windows can be transient menus or another asset editor being closed.
+    // A native child is destroyed with its owner, including during initialization.
+    FSlateApplication::Get().AddModalWindow(Window, RootWindow);
     return *Decision;
 }

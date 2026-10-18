@@ -23,6 +23,8 @@ struct FCrimeFactoryUpdatePresentation
 
 namespace CrimeFactoryUpdaterUI
 {
+    // Async checks must wait for a normal editor tick and a stable root window.
+    bool CanPresent();
     TSharedRef<SWidget> MakeContent(const FCrimeFactoryUpdatePresentation& Data,
         const FSimpleDelegate& OnUpdate, const FSimpleDelegate& OnClose);
     bool Present(const FCrimeFactoryUpdatePresentation& Data);
