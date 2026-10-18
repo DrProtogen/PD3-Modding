@@ -1,9 +1,11 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Packaging/CrimeFactoryPackagingUI.h"
+#include "Updater/CrimeFactoryEngineUpdater.h"
 
 struct FCrimeFactoryUpdatePresentation
 {
+    FCrimeFactoryEngineUpdateResult Engine;
     FString Status;
     FString Detail;
     FString Branch;
