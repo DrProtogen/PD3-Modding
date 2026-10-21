@@ -293,7 +293,24 @@ bool FCrimeFactoryModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
     TArray<FDirectoryPath> Directories = CurrentTypeInfo.GetDirectories();
     TArray<FSoftObjectPath> SpecificAssets = CurrentTypeInfo.GetSpecificAssets();
 
-    bool bChanged = false;
+    const auto IsTemplatePAL = [](const FSoftObjectPath& AssetPath)
+    {
+        TArray<FString> Segments;
+        AssetPath.GetLongPackageName().ParseIntoArray(Segments, TEXT("/"), true);
+        return Segments.ContainsByPredicate([](const FString& Segment)
+        {
+            return Segment.StartsWith(TEXT("PLACEHOLDER_")) && Segment.EndsWith(TEXT("MODNAME"));
+        });
+    };
+
+    // Content-mounted notification runs before the mod wizard renames templates.
+    // Registering placeholders here puts soft references in the settings CDO,
+    // which makes AssetTools warn about config references and retain redirectors.
+    // Also remove entries left by older CrimeFactory versions for this mod.
+    bool bChanged = SpecificAssets.RemoveAll([&](const FSoftObjectPath& AssetPath)
+    {
+        return AssetPath.GetLongPackageName().StartsWith(PluginMountPath + TEXT("/")) && IsTemplatePAL(AssetPath);
+    }) > 0;
 
     // Make /<ModName> visible in Project Settings -> Asset Manager -> Directories.
     const bool bDirectoryAlreadyRegistered =
@@ -338,6 +355,7 @@ bool FCrimeFactoryModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
     for (const FAssetData& AssetData : PrimaryAssetLabels)
     {
         const FSoftObjectPath PALPath = AssetData.GetSoftObjectPath();
+        if (IsTemplatePAL(PALPath)) continue;
 
         if (!SpecificAssets.Contains(PALPath))
         {
@@ -416,11 +434,13 @@ void FCrimeFactoryModule::SaveAndRefreshAssetManagerSettings()
         FPaths::ProjectConfigDir(),
         TEXT("DefaultGame.ini"));
 
-    AssetManagerSettings->SaveConfig(CPF_Config, *DefaultGameIni);
-
-    if (GConfig)
+    // SaveConfig through GConfig updates the live config branch and does not
+    // reliably rewrite the source DefaultGame.ini. Use the default-config
+    // section writer so a separate cook process sees the same registration.
+    if (!AssetManagerSettings->TryUpdateDefaultConfigFile(DefaultGameIni))
     {
-        GConfig->Flush(false, DefaultGameIni);
+        UE_LOG(LogCrimeFactory, Error, TEXT("Could not save Asset Manager PAL registration to %s"), *DefaultGameIni);
+        return;
     }
 
 #if WITH_EDITOR
