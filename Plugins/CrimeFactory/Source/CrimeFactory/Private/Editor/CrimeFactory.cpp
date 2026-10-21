@@ -23,6 +23,8 @@
 #include "Engine/PrimaryAssetLabel.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
+#include "Misc/PackageName.h"
+#include "HAL/FileManager.h"
 #include "Async/Async.h"
 #if __has_include("PD3CookedEditorSettings.h")
 #include "PD3CookedEditorSettings.h"
@@ -240,6 +242,12 @@ bool IsPluginAMod(IPlugin& Plugin) {
 
 bool FCrimeFactoryModule::RegisterPrimaryAssetLabelsFromPlugin(IPlugin& Plugin)
 {
+    // Enabled plugins can remain cached after their directory is deleted.
+    // Their cached assets must never recreate a cook registration.
+    if (!IFileManager::Get().FileExists(*Plugin.GetDescriptorFileName()))
+    {
+        return false;
+    }
     if (!Plugin.CanContainContent())
     {
         return false;
@@ -478,9 +486,83 @@ void FCrimeFactoryModule::SaveAndRefreshAssetManagerSettings()
         *DefaultGameIni);
 }
 
+bool FCrimeFactoryModule::PruneDeletedModRegistrations()
+{
+    UAssetManagerSettings* Settings = GetMutableDefault<UAssetManagerSettings>();
+    FPrimaryAssetTypeInfo* Type = Settings->PrimaryAssetTypesToScan.FindByPredicate(
+        [](const FPrimaryAssetTypeInfo& Info) { return Info.PrimaryAssetType == FName(TEXT("PrimaryAssetLabel")); });
+    if (!Type) return false;
+
+    TSet<FString> DeletedMounts;
+    // PluginManager may retain enabled plugins until editor restart.
+    for (const TSharedRef<IPlugin>& KnownPlugin : IPluginManager::Get().GetDiscoveredPlugins())
+    {
+        if (KnownPlugin->GetType() == EPluginType::Mod &&
+            !IFileManager::Get().FileExists(*KnownPlugin->GetDescriptorFileName()))
+        {
+            DeletedMounts.Add(TEXT("/") + KnownPlugin->GetName());
+        }
+    }
+
+    const FPrimaryAssetTypeInfo& CurrentType = *Type;
+    TArray<FDirectoryPath> Directories = CurrentType.GetDirectories();
+    TArray<FSoftObjectPath> SpecificAssets = CurrentType.GetSpecificAssets();
+    // After an editor restart the cached plugin is gone. Identify orphaned
+    // CrimeFactory PAL registrations by their conventional /Mod/PAL_Mod path.
+    // Preserve real plugins, mounted custom content, and unrelated scan paths.
+    for (const FSoftObjectPath& Asset : SpecificAssets)
+    {
+        const FString Package = Asset.GetLongPackageName();
+        const FString Mount = FPackageName::GetLongPackagePath(Package);
+        if (!Mount.StartsWith(TEXT("/")) || Mount.Mid(1).Contains(TEXT("/"))) continue;
+        const FString Name = Mount.Mid(1);
+        if (Name.IsEmpty() || Name == TEXT("Game") || Name == TEXT("Engine") || Name == TEXT("Script") ||
+            Package != Mount + TEXT("/PAL_") + Name) continue;
+        const TSharedPtr<IPlugin> KnownPlugin = IPluginManager::Get().FindPlugin(Name);
+        if (KnownPlugin.IsValid())
+        {
+            if (KnownPlugin->GetType() == EPluginType::Mod &&
+                !IFileManager::Get().FileExists(*KnownPlugin->GetDescriptorFileName())) DeletedMounts.Add(Mount);
+            continue;
+        }
+        const FString Descriptor = FPaths::ProjectModsDir() / Name / (Name + TEXT(".uplugin"));
+        if (!IFileManager::Get().FileExists(*Descriptor) && !FPackageName::MountPointExists(Mount + TEXT("/")))
+        {
+            DeletedMounts.Add(Mount);
+        }
+    }
+    if (DeletedMounts.IsEmpty()) return false;
+
+    const auto IsDeletedPath = [&DeletedMounts](const FString& Path)
+    {
+        for (const FString& Mount : DeletedMounts)
+        {
+            if (Path.Equals(Mount, ESearchCase::IgnoreCase) ||
+                Path.StartsWith(Mount + TEXT("/"), ESearchCase::IgnoreCase)) return true;
+        }
+        return false;
+    };
+    const int32 RemovedDirectories = Directories.RemoveAll(
+        [&](const FDirectoryPath& Directory) { return IsDeletedPath(Directory.Path); });
+    const int32 RemovedAssets = SpecificAssets.RemoveAll(
+        [&](const FSoftObjectPath& Asset) { return IsDeletedPath(Asset.GetLongPackageName()); });
+    if (RemovedDirectories == 0 && RemovedAssets == 0) return false;
+    UClass* BaseClass = CurrentType.GetAssetBaseClass().LoadSynchronous();
+    if (!BaseClass) return false;
+    FPrimaryAssetTypeInfo UpdatedType(CurrentType.PrimaryAssetType, BaseClass,
+        CurrentType.bHasBlueprintClasses, CurrentType.bIsEditorOnly, MoveTemp(Directories), MoveTemp(SpecificAssets));
+    UpdatedType.Rules = CurrentType.Rules;
+    *Type = MoveTemp(UpdatedType);
+    UE_LOG(LogCrimeFactory, Display, TEXT("Removed deleted mod cook registrations: %d directory entries, %d specific assets."),
+        RemovedDirectories, RemovedAssets);
+    return true;
+}
+
 void FCrimeFactoryModule::EnsureAssetManagerRegistrationForPlugin(IPlugin& Plugin)
 {
-    if (RegisterPrimaryAssetLabelsFromPlugin(Plugin))
+    bool bChanged = PruneDeletedModRegistrations();
+    bChanged |= RegisterPrimaryAssetLabelsFromPlugin(Plugin);
+    if (bChanged)
     {
         SaveAndRefreshAssetManagerSettings();
     }
@@ -620,7 +702,7 @@ void FCrimeFactoryModule::RemoveAssetManagerRegistrationForPlugin(
 
 void FCrimeFactoryModule::RegisterModTemplates()
 {
-    bool bAssetManagerChanged = false;
+    bool bAssetManagerChanged = PruneDeletedModRegistrations();
 
     TArray<TSharedRef<IPlugin>> EnabledPlugins =
         IPluginManager::Get().GetEnabledPlugins();
