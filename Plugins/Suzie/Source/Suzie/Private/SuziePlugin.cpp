@@ -3,6 +3,9 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/AsyncLoading2.h"
+#include "Serialization/ArchiveReplaceObjectRef.h"
+#include "Serialization/StructuredArchiveAdapters.h"
+#include "Misc/PD3CookedEditor.h"
 #include "Engine/Blueprint.h"
 #include "UObject/Class.h"
 #include "UObject/UObjectGlobals.h"
@@ -19,6 +22,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/Level.h"
+#include "GameFramework/Actor.h"
 #include "GameFramework/WorldSettings.h"
 #include "UObject/ObjectSaveContext.h"
 #include "Misc/CoreDelegates.h"
@@ -4744,6 +4748,105 @@ void FSuziePluginModule::CopySuzieDynamicDefaultsFromCDO(
     CopySuzieDynamicDefaultsFromObject(DestinationObject, ClassDefaultObject, TopLevelDynamicClass);
 }
 
+namespace
+{
+    // Recreate the reflected defaults that the missing native actor constructor
+    // would assign to its default subobjects. In particular, a stock component
+    // constructor cannot supply owner-specific defaults such as a static root.
+    // Cooked Blueprint exports can omit these values as unchanged from native.
+    static void InitializeSuzieActorSubobjectDefaults(UObject* Object, const UClass* NativeClass)
+    {
+#if WITH_EDITOR
+        if (!UE::PD3CookedEditor::IsEnabled() || !Object->IsA<AActor>())
+        {
+            return;
+        }
+
+        UObject* NativeCDO = NativeClass->GetDefaultObject(false);
+        if (NativeCDO == nullptr || NativeCDO == Object)
+        {
+            // The native CDO itself is populated from the retail schema later.
+            return;
+        }
+
+        TMap<UObject*, UObject*> SubobjectMap;
+        SubobjectMap.Add(NativeCDO, Object);
+        ForEachObjectWithOuter(NativeCDO, [&](UObject* Template)
+        {
+            if (!Template->HasAnyFlags(RF_DefaultSubObject))
+            {
+                return;
+            }
+
+            TArray<FName, TInlineAllocator<8>> Names;
+            for (UObject* Outer = Template; Outer != NativeCDO; Outer = Outer->GetOuter())
+            {
+                Names.Add(Outer->GetFName());
+            }
+            UObject* Instance = Object;
+            for (int32 Index = Names.Num() - 1; Instance && Index >= 0; --Index)
+            {
+                Instance = StaticFindObjectFast(UObject::StaticClass(), Instance, Names[Index]);
+            }
+            // A suppressed/replaced subobject must not leave a CDO reference.
+            SubobjectMap.Add(Template, Instance && Instance->IsA(Template->GetClass()) ? Instance : nullptr);
+        }, true);
+
+        for (const TPair<UObject*, UObject*>& Pair : SubobjectMap)
+        {
+            if (Pair.Key == NativeCDO || Pair.Value == nullptr)
+            {
+                continue;
+            }
+
+            // Only serialize the properties copied below, not the object or its
+            // native serialization state. All subobjects already exist, including
+            // nested ones, before any template reference is remapped.
+            FArchiveReplaceObjectRef<UObject> Remap(Pair.Value, SubobjectMap,
+                EArchiveReplaceObjectFlags::DelayStart);
+            for (TFieldIterator<FProperty> It(Pair.Key->GetClass()); It; ++It)
+            {
+                FProperty* Property = *It;
+                if (Property->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient
+                    | CPF_NonPIEDuplicateTransient))
+                {
+                    continue;
+                }
+                if (Property->HasAnyPropertyFlags(CPF_InstancedReference
+                    | CPF_ContainsInstancedReference | CPF_ExportObject))
+                {
+                    // AttachParent is itself an instanced/exported object property.
+                    // Restore only references to already-created local subobjects;
+                    // leave other instanced graphs to Unreal's normal initializer.
+                    if (FObjectPropertyBase* Reference = CastField<FObjectPropertyBase>(Property))
+                    {
+                        for (int32 Index = 0; Index < Property->ArrayDim; ++Index)
+                        {
+                            UObject* Source = Reference->GetObjectPropertyValue(
+                                Property->ContainerPtrToValuePtr<void>(Pair.Key, Index));
+                            UObject* const* Local = SubobjectMap.Find(Source);
+                            if (Source == nullptr || Local != nullptr)
+                            {
+                                Reference->SetObjectPropertyValue(
+                                    Property->ContainerPtrToValuePtr<void>(Pair.Value, Index), Local ? *Local : nullptr);
+                            }
+                        }
+                    }
+                    continue;
+                }
+                Property->CopyCompleteValue_InContainer(Pair.Value, Pair.Key);
+                for (int32 Index = 0; Index < Property->ArrayDim; ++Index)
+                {
+                    FStructuredArchiveFromArchive Slot(Remap);
+                    Property->SerializeItem(Slot.GetSlot(),
+                        Property->ContainerPtrToValuePtr<void>(Pair.Value, Index), nullptr);
+                }
+            }
+        }
+#endif
+    }
+}
+
 void FSuziePluginModule::PolymorphicClassConstructorInvocationHelper(const FObjectInitializer& ObjectInitializer)
 {
     const UClass* NativeParentClass = GetNativeParentClassForDynamicClass(ObjectInitializer.GetClass());
@@ -4870,6 +4973,8 @@ void FSuziePluginModule::PolymorphicClassConstructorInvocationHelper(const FObje
     {
         ExecutePolymorphicClassConstructorFrameForDynamicClass(ObjectInitializer, DynamicClassHierarchyTree[i]);
     }
+
+    InitializeSuzieActorSubobjectDefaults(ConstructedObject, TopLevelDynamicClass);
 
     // UGameplayEffect::PostInitProperties runs after this synthetic class constructor
     // returns. Seed constructor-critical retail GameplayEffect state now, while
