@@ -23,6 +23,7 @@
 #include "Engine/World.h"
 #include "Engine/Level.h"
 #include "GameFramework/Actor.h"
+#include "Components/PrimitiveComponent.h"
 #include "GameFramework/WorldSettings.h"
 #include "UObject/ObjectSaveContext.h"
 #include "Misc/CoreDelegates.h"
@@ -4840,6 +4841,22 @@ namespace
                     FStructuredArchiveFromArchive Slot(Remap);
                     Property->SerializeItem(Slot.GetSlot(),
                         Property->ContainerPtrToValuePtr<void>(Pair.Value, Index), nullptr);
+                }
+            }
+
+            // CPD has separate serialized defaults and a transient live payload.
+            // Native constructors can initialize both; copying reflected defaults
+            // alone leaves newly constructed Blueprint CDOs with an empty payload.
+            // Restore the native template's actual live values here, before normal
+            // archetype/serialized overrides and construction-script setters run.
+            // Do not copy unrelated transient component/registration state.
+            if (const UPrimitiveComponent* PrimitiveTemplate = Cast<UPrimitiveComponent>(Pair.Key))
+            {
+                UPrimitiveComponent* PrimitiveInstance = CastChecked<UPrimitiveComponent>(Pair.Value);
+                const TArray<float>& NativeData = PrimitiveTemplate->GetCustomPrimitiveData().Data;
+                if (PrimitiveInstance->GetCustomPrimitiveData().Data != NativeData)
+                {
+                    PrimitiveInstance->SetCustomPrimitiveData(NativeData);
                 }
             }
         }
