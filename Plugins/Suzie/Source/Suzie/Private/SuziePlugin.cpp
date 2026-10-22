@@ -1,4 +1,5 @@
 #include "SuziePlugin.h"
+#include "HeistAuthoring.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -858,6 +859,8 @@ void FSuziePluginModule::StartupModule()
 
     ProcessAllJsonClassDefinitions();
 
+    SuzieHeistAuthoring::RegisterEditorHooks();
+
     if (!GSuzieDoorPersistencePreSaveHandle.IsValid())
     {
         GSuzieDoorPersistencePreSaveHandle = FCoreUObjectDelegates::OnObjectPreSave.AddStatic(
@@ -890,6 +893,7 @@ void FSuziePluginModule::StartupModule()
 
 void FSuziePluginModule::ShutdownModule()
 {
+    SuzieHeistAuthoring::UnregisterEditorHooks();
     if (GSuziePostEngineInitHandle.IsValid())
     {
         FCoreDelegates::OnPostEngineInit.Remove(GSuziePostEngineInitHandle);
@@ -4769,6 +4773,14 @@ namespace
             // The native CDO itself is populated from the retail schema later.
             return;
         }
+
+        // The surviving engine constructor cannot supply tick configuration set
+        // by a missing game-native constructor. Exact native instances take UE's
+        // CDO fast path, which assumes that constructor already assigned it.
+        // Preserve configuration only; never copy live tick registration state.
+        // Blueprint/archetype and serialized overrides are applied afterwards.
+        SuzieHeistAuthoring::CopyActorTickConfiguration(
+            *CastChecked<AActor>(Object), *CastChecked<AActor>(NativeCDO));
 
         TMap<UObject*, UObject*> SubobjectMap;
         SubobjectMap.Add(NativeCDO, Object);
