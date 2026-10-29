@@ -46,6 +46,8 @@
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
 #include "Interfaces/IPluginManager.h"
+#include "Interfaces/IProjectManager.h"
+#include "ProjectDescriptor.h"
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
@@ -1762,8 +1764,10 @@ namespace
 
 		if (FPaths::IsRelative(Root))
 		{
+			const FString AbsoluteContentDir =
+				FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());
 			Root = FPaths::ConvertRelativePathToFull(
-				FPaths::ProjectContentDir(),
+				AbsoluteContentDir,
 				Root);
 		}
 
@@ -1901,8 +1905,8 @@ namespace
 				CleanRelative.RightChopInline(1, EAllowShrinking::No);
 			}
 
-			const FString Source =
-				FPaths::Combine(PlatformRoot, CleanRelative);
+			const FString Source = FPaths::ConvertRelativePathToFull(
+				FPaths::Combine(PlatformRoot, CleanRelative));
 			const FString StagedPath =
 				FString(TEXT("PAYDAY3/Content/WwiseAudio/")) + CleanRelative;
 
@@ -4556,6 +4560,30 @@ FReply SCrimeFactoryModEntry::OnDeleteMod()
         RootMountPath,
         PluginContentDir);
 
+    // Default-enabled mods normally have no .uproject entry. Remove an
+    // explicit override if one exists, so it cannot require this deleted mod
+    // when a separate cook/UAT process or a later editor session starts.
+    IProjectManager& ProjectManager = IProjectManager::Get();
+    const FProjectDescriptor* Project = ProjectManager.GetCurrentProject();
+    if (Project && Project->Plugins.ContainsByPredicate(
+        [&PluginName](const FPluginReferenceDescriptor& Reference)
+        {
+            return Reference.Name.Equals(PluginName, ESearchCase::IgnoreCase);
+        }))
+    {
+        FText ProjectSaveFailure;
+        if (!ProjectManager.RemovePluginReference(PluginName, ProjectSaveFailure) ||
+            !ProjectManager.SaveCurrentProjectToDisk(ProjectSaveFailure))
+        {
+            UE_LOG(LogCrimeFactory, Error,
+                TEXT("Deleted mod %s, but could not save removal of its project plugin reference: %s. Make the project descriptor writable and save the project before packaging."),
+                *PluginName, *ProjectSaveFailure.ToString());
+            FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(FString::Printf(
+                TEXT("Mod '%s' was deleted, but its project plugin reference could not be saved. Make the project descriptor writable and save the project before packaging.\n\n%s"),
+                *PluginName, *ProjectSaveFailure.ToString())));
+        }
+    }
+
     // Remove the saved checkbox selection for the deleted mod.
     if (UCrimeFactorySettings* Settings = UCrimeFactorySettings::Get())
     {
@@ -4565,9 +4593,10 @@ FReply SCrimeFactoryModEntry::OnDeleteMod()
 
     /*
      * Remove the deleted descriptor from PluginManager's discovered list and
-     * refresh discovery. The content mount may remain alive until editor
-     * restart if assets from the mod were already loaded, but it will no
-     * longer exist on disk or in CrimeFactory's list.
+     * refresh discovery. UE refuses removal of enabled plugins, and refresh
+     * intentionally retains them. Do not force-unload assets/modules here.
+     * Asset Manager registration is already gone; packaging independently
+     * validates loaded receipt dependencies before UAT staging.
      */
     FText RemovePluginFailReason;
     if (!IPluginManager::Get().RemoveFromPluginsList(
@@ -4579,7 +4608,8 @@ FReply SCrimeFactoryModEntry::OnDeleteMod()
             Warning,
             TEXT(
                 "Mod %s was deleted from disk, but PluginManager could not "
-                "remove its descriptor from the current in-memory list: %s"
+                "remove its descriptor from the current in-memory list: %s. "
+                "CrimeFactory will validate receipt references before staging; no restart is required for that cleanup."
             ),
             *PluginName,
             *RemovePluginFailReason.ToString());
