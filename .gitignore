@@ -9128,3 +9128,6 @@ Binaries/Win64/EOSSDK-Win64-Shipping.dll
 !Tools/**
 
 !Plugins/CrimeForge/Resources/*
+/Tools/done
+
+!*.umap
